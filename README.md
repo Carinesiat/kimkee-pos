@@ -6,7 +6,7 @@ Offline point-of-sale for Kim Kee Noodle, built for one iPad. Plain HTML/CSS/JS,
 
 - Menu by category, or type a code (e.g. `04S`, `k01`, `ad06`) and press Go to add it
 - Required options per item (noodle type, hot/cold, Teh/C/O, set drink, kid set milk…), quick kitchen notes
-- Dine-in / takeaway: 10% service charge on dine-in, RM0.50 per item on takeaway (not on add-ons), 6% SST on both
+- Dine-in / takeaway per item (takeaway +RM0.50, or takeaway with no charge); the top toggle switches the whole order. 10% service charge on dine-in items only, 6% SST on everything
 - Payments: Cash (with change and 5-sen rounding), QR, Visa, Master, Debit, Bank In
 - Hold an order (pay later), reopen it from Orders
 - Orders list per day, reprint, void

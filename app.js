@@ -103,14 +103,35 @@ async function nextOrderNo(day) {
 // ---------- pricing ----------
 const lineUnit = (l) => l.base + l.opts.reduce((a, o) => a + o.delta, 0);
 
-function calcTotals(lines, mode, st = settings) {
-  let subtotal = 0, count = 0;
+// Each line is dine-in, takeaway (charged per item) or takeaway with the charge waived.
+const PACKS = [
+  { id: 'dine', zh: '堂食', en: 'Dine-in' },
+  { id: 'take', zh: '外带', en: 'Takeaway' },
+  { id: 'takeFree', zh: '外带 免收', en: 'Takeaway, no charge' },
+];
+const defaultPack = (addon, mode) => (mode === 'take' ? (addon ? 'takeFree' : 'take') : 'dine');
+const packFee = (pack) => (pack === 'take' ? toSen(settings.takeawayFee) : 0);
+const packTag = (pack) => (pack === 'take' ? '外带' : pack === 'takeFree' ? '外带 免收' : '');
+
+// Order type is derived from its lines: all dine-in, all takeaway, or mixed.
+function orderMode(lines) {
+  const dine = lines.filter((l) => l.pack === 'dine').length;
+  return dine === lines.length ? 'dine' : dine === 0 ? 'take' : 'mixed';
+}
+const MODE_LABEL = { dine: '堂食 Dine-in', take: '外带 Takeaway', mixed: '堂食+外带 Mixed' };
+const MODE_SHORT = { dine: '堂食', take: '外带', mixed: '混合' };
+
+// Service charge only applies to dine-in lines; SST applies to everything.
+function calcTotals(lines, st = settings) {
+  let subtotal = 0, dineSub = 0, takeCount = 0;
   for (const l of lines) {
-    subtotal += lineUnit(l) * l.qty;
-    if (!l.addon) count += l.qty;
+    const amt = lineUnit(l) * l.qty;
+    subtotal += amt;
+    if (l.pack === 'dine') dineSub += amt;
+    if (l.pack === 'take') takeCount += l.qty;
   }
-  const takeaway = mode === 'take' ? count * toSen(st.takeawayFee) : 0;
-  const sc = mode === 'dine' ? Math.round(subtotal * st.scRate / 100) : 0;
+  const takeaway = takeCount * toSen(st.takeawayFee);
+  const sc = Math.round(dineSub * st.scRate / 100);
   const sst = Math.round((subtotal + takeaway + (st.sstOnSc ? sc : 0)) * st.sstRate / 100);
   const total = subtotal + takeaway + sc + sst;
   return { subtotal, takeaway, sc, sst, total };
@@ -122,11 +143,13 @@ const cashRound = (total) => (settings.cashRounding ? Math.round(total / 5) * 5 
 const rateSnapshot = () => ({ sstRate: settings.sstRate, scRate: settings.scRate, takeawayFee: settings.takeawayFee, sstOnSc: settings.sstOnSc });
 
 // ---------- cart ----------
+// cart.mode is the default dine-in / takeaway for newly added lines.
 let cart = store('pos.cart') || { mode: 'dine', lines: [], orderId: null, label: '' };
+for (const l of cart.lines) l.pack ||= defaultPack(l.addon, cart.mode);
 const saveCart = () => store('pos.cart', cart);
 let lineSeq = Date.now();
 
-function lineKey(l) { return l.itemId + '|' + l.opts.map((o) => o.zh).join(',') + '|' + l.note; }
+function lineKey(l) { return l.itemId + '|' + l.opts.map((o) => o.zh).join(',') + '|' + l.note + '|' + l.pack; }
 
 function addLine(line) {
   const k = lineKey(line);
@@ -137,8 +160,8 @@ function addLine(line) {
   renderCart();
 }
 
-function makeLine(it, opts = [], note = '', qty = 1) {
-  return { lid: ++lineSeq, itemId: it.id, code: it.code, zh: it.zh, en: it.en, base: itemPrice(it), addon: it.addon, opts, note, qty };
+function makeLine(it, opts = [], note = '', qty = 1, pack = defaultPack(it.addon, cart.mode)) {
+  return { lid: ++lineSeq, itemId: it.id, code: it.code, zh: it.zh, en: it.en, base: itemPrice(it), addon: it.addon, opts, note, qty, pack };
 }
 
 function clearCart() {
@@ -194,7 +217,8 @@ function onItemTap(id) {
 function renderCart() {
   $$('#modeSeg button').forEach((b) => b.classList.toggle('active', b.dataset.mode === cart.mode));
   const count = cart.lines.reduce((a, l) => a + l.qty, 0);
-  $('#cartMeta').innerHTML = `<span>${cart.orderId ? `<b>挂单 #${esc(cart.orderId.split('-').pop())}</b>${cart.label ? ' · ' + esc(cart.label) : ''}` : '新订单 New order'}</span><span>${count} 件 items</span>`;
+  const mixed = cart.lines.length && orderMode(cart.lines) === 'mixed';
+  $('#cartMeta').innerHTML = `<span>${cart.orderId ? `<b>挂单 #${esc(cart.orderId.split('-').pop())}</b>${cart.label ? ' · ' + esc(cart.label) : ''}` : '新订单 New order'}${mixed ? ' · <b>堂食+外带</b>' : ''}</span><span>${count} 件 items</span>`;
 
   $('#cartLines').innerHTML = cart.lines.length ? cart.lines.map((l) => `
     <div class="line" data-lid="${l.lid}">
@@ -202,16 +226,19 @@ function renderCart() {
         <div class="name">${l.code ? `<span class="c">${esc(l.code)}</span>` : ''}${esc(l.zh)}</div>
         ${l.opts.length ? `<div class="opts">${l.opts.map((o) => esc(o.zh) + (o.delta ? ` +${fmt(o.delta)}` : '')).join(' · ')}</div>` : ''}
         ${l.note ? `<div class="note">✎ ${esc(l.note)}</div>` : ''}
+        ${l.pack !== 'dine' ? `<span class="pack ${l.pack}">${packTag(l.pack)}${l.pack === 'take' ? ` +${fmt(packFee('take'))}` : ''}</span>` : ''}
         <div class="qty"><button data-act="dec">−</button><span>${l.qty}</span><button data-act="inc">+</button></div>
       </div>
       <div class="amt">${fmt(lineUnit(l) * l.qty)}</div>
     </div>`).join('') : '<div class="cart-empty">点左边的菜加入订单<br><small>Tap an item to add</small></div>';
 
-  const t = calcTotals(cart.lines, cart.mode);
+  const t = calcTotals(cart.lines);
+  const anyDine = !cart.lines.length ? cart.mode === 'dine' : cart.lines.some((l) => l.pack === 'dine');
+  const anyTake = !cart.lines.length ? cart.mode === 'take' : cart.lines.some((l) => l.pack !== 'dine');
   $('#cartTotals').innerHTML = `
     <div class="row muted"><span>小计 Subtotal</span><span>${fmt(t.subtotal)}</span></div>
-    ${cart.mode === 'take' ? `<div class="row muted"><span>外带费 Takeaway</span><span>${fmt(t.takeaway)}</span></div>` : ''}
-    ${cart.mode === 'dine' ? `<div class="row muted"><span>服务费 Service ${settings.scRate}%</span><span>${fmt(t.sc)}</span></div>` : ''}
+    ${anyTake ? `<div class="row muted"><span>外带费 Takeaway</span><span>${fmt(t.takeaway)}</span></div>` : ''}
+    ${anyDine ? `<div class="row muted"><span>服务费 Service ${settings.scRate}%</span><span>${fmt(t.sc)}</span></div>` : ''}
     <div class="row muted"><span>SST ${settings.sstRate}%</span><span>${fmt(t.sst)}</span></div>
     <div class="row total"><span>总计 Total</span><span>${RM(t.total)}</span></div>`;
   $('#btnPay').disabled = !cart.lines.length;
@@ -247,6 +274,7 @@ function openItemSheet(it, line) {
   });
   let qty = line ? line.qty : 1;
   let note = line ? line.note : '';
+  let pack = line ? line.pack : defaultPack(it.addon, cart.mode);
 
   const s = openModal(`
     <div class="sheet-head"><h3>${it.code ? esc(it.code) + ' · ' : ''}${esc(it.zh)}</h3><div class="sub">${esc(it.en)} · ${RM(line ? line.base : itemPrice(it))}</div></div>
@@ -255,6 +283,9 @@ function openItemSheet(it, line) {
         <div class="group"><div class="group-title">${esc(g.zh)} <small>${esc(g.en)}</small><span class="req">必选 Required</span></div>
           <div class="chips">${g.choices.map((c, ci) => `<button class="chip" data-g="${gi}" data-c="${ci}">${esc(c.zh)}${c.price ? `<span class="delta">+${fmt(toSen(c.price))}</span>` : ''}<small>${esc(c.en)}</small></button>`).join('')}</div>
         </div>`).join('')}
+      <div class="group"><div class="group-title">堂食 / 外带 <small>Dine-in / Takeaway</small></div>
+        <div class="chips">${PACKS.map((p) => `<button class="chip" data-p="${p.id}">${esc(p.zh)}${p.id === 'take' ? `<span class="delta">+${fmt(packFee('take'))}</span>` : ''}<small>${esc(p.en)}</small></button>`).join('')}</div>
+      </div>
       <div class="group"><div class="group-title">备注 <small>Note</small></div>
         <div class="chips" style="margin-bottom:8px">${QUICK_NOTES.map((n) => `<button class="chip small" data-qn="${esc(n.split(' ')[0])}">${esc(n)}</button>`).join('')}</div>
         <label class="field"><input id="noteInput" value="${esc(note)}" placeholder="例如：不要葱 / 少辣"></label>
@@ -271,11 +302,12 @@ function openItemSheet(it, line) {
   const ok = $('[data-ok]', s);
   const sync = () => {
     $$('.chip[data-g]', s).forEach((b) => b.classList.toggle('on', sel[+b.dataset.g] === +b.dataset.c));
+    $$('.chip[data-p]', s).forEach((b) => b.classList.toggle('on', b.dataset.p === pack));
     const base = line ? line.base : itemPrice(it);
     const delta = sel.reduce((a, ci, gi) => a + (ci >= 0 ? toSen(it.groups[gi].choices[ci].price || 0) : 0), 0);
     const ready = sel.every((ci) => ci >= 0);
     ok.disabled = !ready;
-    ok.innerHTML = `${line ? '保存 Save' : '加入 Add'}<small>${RM((base + delta) * qty)}</small>`;
+    ok.innerHTML = `${line ? '保存 Save' : '加入 Add'}<small>${RM((base + delta + packFee(pack)) * qty)}</small>`;
     $('#qtyVal', s).textContent = qty;
     const noteVal = $('#noteInput', s).value;
     $$('[data-qn]', s).forEach((b) => b.classList.toggle('on', noteVal.split(/[,，]\s*/).includes(b.dataset.qn)));
@@ -284,6 +316,7 @@ function openItemSheet(it, line) {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.g !== undefined) { sel[+b.dataset.g] = +b.dataset.c; sync(); }
+    else if (b.dataset.p) { pack = b.dataset.p; sync(); }
     else if (b.dataset.q) { qty = Math.max(1, qty + +b.dataset.q); sync(); }
     else if (b.dataset.qn) {
       const inp = $('#noteInput', s);
@@ -303,10 +336,10 @@ function openItemSheet(it, line) {
       });
       note = $('#noteInput', s).value.trim();
       if (line) {
-        Object.assign(line, { opts, note, qty });
+        Object.assign(line, { opts, note, qty, pack });
         saveCart(); renderCart();
       } else {
-        addLine(makeLine(it, opts, note, qty));
+        addLine(makeLine(it, opts, note, qty, pack));
         toast(`+${qty} ${it.code ? it.code + ' ' : ''}${it.zh}`);
       }
       closeModal();
@@ -318,9 +351,9 @@ function openItemSheet(it, line) {
 
 // ---------- hold & pay ----------
 function buildOrder(base) {
-  const totals = calcTotals(cart.lines, cart.mode);
+  const totals = calcTotals(cart.lines);
   return Object.assign(base, {
-    mode: cart.mode,
+    mode: orderMode(cart.lines),
     label: cart.label || '',
     lines: cart.lines.map((l) => ({ ...l })),
     totals,
@@ -364,12 +397,12 @@ function holdOrder() {
 
 function openPaySheet() {
   if (!cart.lines.length) return;
-  const t = calcTotals(cart.lines, cart.mode);
+  const t = calcTotals(cart.lines);
   let method = null;
   let tendered = '';
 
   const s = openModal(`
-    <div class="sheet-head"><h3>结账 Payment</h3><div class="sub">${cart.mode === 'dine' ? '堂食 Dine-in' : '外带 Takeaway'} · ${cart.lines.reduce((a, l) => a + l.qty, 0)} 件 items</div></div>
+    <div class="sheet-head"><h3>结账 Payment</h3><div class="sub">${MODE_LABEL[orderMode(cart.lines)]} ·${cart.lines.reduce((a, l) => a + l.qty, 0)} 件 items</div></div>
     <div class="sheet-body">
       <div class="pay-total"><div class="big" id="payBig">${RM(t.total)}</div><div id="payRound" class="sub"></div></div>
       <div class="methods">${PAYMENT_METHODS.map((m) => `<button class="chip" data-m="${m.id}">${esc(m.zh)}<small>${esc(m.en)}</small></button>`).join('')}</div>
@@ -457,12 +490,12 @@ function receiptHtml(o) {
     <h1>${esc(settings.shopName)}</h1>
     ${settings.shopAddr ? `<div class="c">${esc(settings.shopAddr).replace(/\n/g, '<br>')}</div>` : ''}
     <hr>
-    <div class="r"><span>单号 No. <b>#${pad(o.no)}</b></span><span>${o.mode === 'dine' ? '堂食 Dine-in' : '外带 Takeaway'}</span></div>
+    <div class="r"><span>单号 No. <b>#${pad(o.no)}</b></span><span>${MODE_LABEL[o.mode]}</span></div>
     <div>${dateTimeStr(o.paidAt || o.createdAt)}${o.label ? ' · ' + esc(o.label) : ''}</div>
     <hr>
     ${o.lines.map((l) => `
       <div class="r"><span>${l.qty} × ${l.code ? esc(l.code) + ' ' : ''}${esc(l.zh)}</span><span>${fmt(lineUnit(l) * l.qty)}</span></div>
-      ${l.opts.length ? `<div class="s">${l.opts.map((x) => esc(x.zh)).join(' · ')}</div>` : ''}
+      ${l.opts.length || (o.mode === 'mixed' && l.pack !== 'dine') ? `<div class="s">${[...l.opts.map((x) => esc(x.zh)), o.mode === 'mixed' ? packTag(l.pack) : ''].filter(Boolean).join(' · ')}</div>` : ''}
       ${l.note ? `<div class="s">✎ ${esc(l.note)}</div>` : ''}`).join('')}
     <hr>
     <div class="r"><span>小计 Subtotal</span><span>${fmt(t.subtotal)}</span></div>
@@ -496,7 +529,7 @@ async function renderOrders() {
   $('#ordersList').innerHTML = list.length ? list.map((o) => `
     <button class="order-row" data-id="${o.id}">
       <span class="no">#${pad(o.no)}</span>
-      <span>${timeStr(o.createdAt)}<br><small>${o.mode === 'dine' ? '堂食' : '外带'}</small></span>
+      <span>${timeStr(o.createdAt)}<br><small>${MODE_SHORT[o.mode]}</small></span>
       <span class="sum">${o.label ? `<b>${esc(o.label)}</b> · ` : ''}${o.lines.map((l) => `${l.qty}×${esc(l.code || l.zh)}`).join(', ')}</span>
       <span class="pill ${o.status}">${label[o.status]}${o.payment ? ' · ' + methodName(o.payment.method) : ''}</span>
       <span class="amt">${fmt(o.totals.paid ?? o.totals.total)}</span>
@@ -507,7 +540,7 @@ async function openOrderDetail(id) {
   const o = await DB.get(id);
   if (!o) return;
   const s = openModal(`
-    <div class="sheet-head"><h3>订单 #${pad(o.no)}</h3><div class="sub">${dateTimeStr(o.createdAt)} · ${o.mode === 'dine' ? '堂食 Dine-in' : '外带 Takeaway'}${o.label ? ' · ' + esc(o.label) : ''}</div></div>
+    <div class="sheet-head"><h3>订单 #${pad(o.no)}</h3><div class="sub">${dateTimeStr(o.createdAt)} · ${MODE_LABEL[o.mode]}${o.label ? ' · ' + esc(o.label) : ''}</div></div>
     <div class="sheet-body">${receiptHtml(o).replace('class="rc"', 'class="rc preview"')}</div>
     <div class="sheet-foot">
       ${o.status === 'paid' ? '<button class="btn danger" data-void>作废 Void</button>' : ''}
@@ -531,7 +564,7 @@ async function openOrderDetail(id) {
       }, true);
     } else if (b.hasAttribute('data-load')) {
       const load = () => {
-        cart = { mode: o.mode, lines: o.lines.map((l) => ({ ...l })), orderId: o.id, label: o.label || '' };
+        cart = { mode: o.mode === 'take' ? 'take' : 'dine', lines: o.lines.map((l) => ({ ...l })), orderId: o.id, label: o.label || '' };
         saveCart(); renderCart(); closeModal(); showView('order');
       };
       if (cart.lines.length && cart.orderId !== o.id) {
@@ -554,7 +587,7 @@ async function dayReport(day) {
   const paid = all.filter((o) => o.status === 'paid');
   const r = {
     day, count: paid.length, sales: 0, subtotal: 0, takeaway: 0, sc: 0, sst: 0, rounding: 0,
-    methods: {}, modes: { dine: { n: 0, amt: 0 }, take: { n: 0, amt: 0 } }, items: {},
+    methods: {}, modes: { dine: { n: 0, amt: 0 }, take: { n: 0, amt: 0 }, mixed: { n: 0, amt: 0 } }, items: {},
     voids: all.filter((o) => o.status === 'void'), open: all.filter((o) => o.status === 'open'),
   };
   for (const o of paid) {
@@ -602,6 +635,7 @@ async function renderReport() {
         <div class="panel"><h3>堂食 / 外带</h3><table>
           <tr><td>堂食 Dine-in</td><td class="r">${r.modes.dine.n} 单</td><td class="r">${fmt(r.modes.dine.amt)}</td></tr>
           <tr><td>外带 Takeaway</td><td class="r">${r.modes.take.n} 单</td><td class="r">${fmt(r.modes.take.amt)}</td></tr>
+          <tr><td>混合 Mixed</td><td class="r">${r.modes.mixed.n} 单</td><td class="r">${fmt(r.modes.mixed.amt)}</td></tr>
         </table></div>
       </div>
       <div class="panel"><h3>销量 Items sold</h3>${items.length ? `<table>
@@ -648,7 +682,7 @@ async function exportCsv() {
   const rows = [['单号 No', '时间 Time', '状态 Status', '堂食/外带', '付款 Payment', '编号 Code', '品项 Item', '选项 Options', '备注 Note', '数量 Qty', '单价 Unit', '金额 Amount', '订单总计 Order total']];
   for (const o of list) {
     for (const l of o.lines) {
-      rows.push([o.no, timeStr(o.createdAt), o.status, o.mode === 'dine' ? 'Dine-in' : 'Takeaway', o.payment ? methodName(o.payment.method) : '',
+      rows.push([o.no, timeStr(o.createdAt), o.status, packTag(l.pack) || '堂食', o.payment ? methodName(o.payment.method) : '',
         l.code, l.zh, l.opts.map((x) => x.zh).join(' / '), l.note, l.qty, fmt(lineUnit(l)), fmt(lineUnit(l) * l.qty), fmt(o.totals.paid ?? o.totals.total)]);
     }
   }
@@ -783,7 +817,10 @@ function wire() {
   $('#modeSeg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    cart.mode = b.dataset.mode; saveCart(); renderCart();
+    // Switches the whole order; single items can still be changed by tapping them.
+    cart.mode = b.dataset.mode;
+    for (const l of cart.lines) l.pack = defaultPack(l.addon, cart.mode);
+    saveCart(); renderCart();
   };
   $('#cartLines').onclick = (e) => {
     const lineEl = e.target.closest('.line');
