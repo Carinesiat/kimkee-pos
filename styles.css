@@ -76,6 +76,8 @@ main { flex: 1; min-height: 0; }
   border: 1.5px dashed transparent; border-radius: 8px; }
 .editing .flabel { border-color: var(--gold); background: var(--gold-soft); }
 .flabel.filled { background: #ffdf5e; border: 2px solid #2b2420; color: #2b2420; font-size: clamp(12px, 2cqw, 22px); }
+.flabel.tall { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 2px; }
+.flabel.wall { background: #2b2420; border: 0; border-radius: 2px; }
 .floor-side { background: var(--panel); border-left: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
 .floor-side h3, .floor-side h4 { margin: 4px 0 0; }
 .floor-side .spacer { flex: 1; }

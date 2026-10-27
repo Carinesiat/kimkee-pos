@@ -16,36 +16,52 @@ const TABLE_SIZES = {
 let floorEdit = false;
 let openByTable = {}; // table id -> open orders
 
-// Real floor plans, measured from each outlet's drawing (one 1414 × 2000 px drawing per shop unit).
-// Each unit is placed side by side on the floor: ox = left edge in % of the floor width.
-// Rects are [name, x, y, w, h] in drawing pixels.
+// Real floor plans, measured from each outlet's drawings. A plan is one or more drawings ("units")
+// placed on the floor: dw = drawing width in px, ox / oy = top-left in % of the floor, width = % of
+// the floor width the drawing fills (height follows from the drawing's shape).
+// Rects are [name, x, y, w, h] in drawing pixels; labels are [text, x, y, w, h, style].
 const FLOOR_PLANS = {
   bsd: [
-    { ox: 1, title: '店面 1 · Table 1–17', bar: [524, 1754, 365, 196], tables: [
+    { dw: 1414, ox: 1, oy: 6, width: 48, title: '店面 1 · Table 1–17', labels: [['BAR', 524, 1754, 365, 196, 'fill']], tables: [
       ['14', 138, 168, 196, 196], ['15', 131, 555, 197, 196], ['16', 125, 970, 197, 196], ['17', 119, 1387, 197, 196],
       ['7', 608, 99, 196, 183], ['8', 608, 282, 196, 196], ['9', 608, 536, 196, 196],
       ['10', 608, 802, 196, 184], ['11', 608, 986, 196, 196], ['12', 608, 1259, 196, 184], ['13', 608, 1443, 196, 196],
       ['1', 1074, 168, 196, 183], ['2', 1074, 351, 196, 196], ['3', 1072, 670, 196, 184], ['4', 1072, 854, 196, 195],
       ['5', 1071, 1172, 196, 184], ['6', 1071, 1356, 196, 195],
     ] },
-    { ox: 51, title: '店面 2 · Table 18–32', bar: [524, 1754, 365, 196], tables: [
+    { dw: 1414, ox: 51, oy: 6, width: 48, title: '店面 2 · Table 18–32', labels: [['BAR', 524, 1754, 365, 196, 'fill']], tables: [
       ['28', 150, 100, 196, 196], ['29', 150, 296, 196, 196], ['30', 147, 758, 196, 194], ['31', 147, 952, 196, 197],
       ['32', 150, 1315, 198, 364],
       ['23', 608, 99, 196, 196], ['24', 608, 439, 196, 196], ['25', 608, 809, 196, 196], ['26', 608, 1148, 196, 196], ['27', 605, 1487, 197, 197],
       ['18', 984, 99, 365, 198], ['19', 984, 437, 365, 198], ['20', 984, 798, 365, 198], ['21', 984, 1146, 365, 199], ['22', 984, 1463, 365, 199],
     ] },
   ],
+  kepong: [
+    { dw: 2000, ox: 1, oy: 3, width: 98, labels: [['BAR', 1800, 135, 130, 240, 'fill'], ['', 994, 132, 10, 1140, 'wall']], tables: [
+      ['30', 63, 182, 239, 130], ['29', 63, 412, 239, 130], ['28', 63, 642, 239, 130], ['27', 63, 872, 239, 130], ['26', 63, 1102, 239, 130],
+      ['25', 387, 182, 128, 130], ['24', 515, 182, 126, 130], ['23', 387, 412, 128, 130], ['22', 515, 412, 126, 130],
+      ['21', 387, 642, 128, 130], ['20', 515, 642, 126, 130], ['19', 395, 872, 238, 130], ['18', 395, 1102, 238, 130],
+      ['17', 727, 182, 238, 130], ['16', 727, 412, 238, 130], ['15', 727, 642, 238, 130], ['14', 727, 872, 238, 130], ['13', 727, 1102, 238, 130],
+      ['12', 1035, 393, 238, 129], ['11', 1035, 665, 238, 129], ['10', 1035, 937, 238, 129],
+      ['9', 1348, 393, 238, 129], ['8', 1348, 665, 238, 129], ['7', 1348, 937, 238, 129],
+      ['6', 1680, 741, 128, 129], ['5', 1808, 741, 126, 129], ['4', 1808, 1012, 128, 129],
+      ['1', 1551, 1141, 129, 129], ['2', 1680, 1141, 128, 129], ['3', 1808, 1141, 128, 129],
+    ] },
+  ],
 };
 
-// Drawing pixels -> % of the 4:3 floor. Each unit gets 48% of the width; 90.5% of the height keeps the drawing's shape.
+// Drawing pixels -> % of the 4:3 floor (a floor-height % is 4/3 of a floor-width %).
 function layoutFromPlan(units) {
-  const sx = 48 / 1414, sy = 90.5 / 2000, oy = 6, gap = 6;
+  const gap = 6;
   const els = [];
   units.forEach((u, ui) => {
-    const box = ([x, y, w, h]) => ({ x: u.ox + (x + gap) * sx, y: oy + (y + gap) * sy, w: (w - 2 * gap) * sx, h: (h - 2 * gap) * sy });
-    els.push({ id: `l${ui}t`, type: 'label', name: u.title, x: u.ox, y: 0.5, w: 48, h: 5 });
+    const sx = u.width / u.dw, sy = sx * 4 / 3;
+    const box = ([x, y, w, h], g = gap) => ({ x: u.ox + (x + g) * sx, y: u.oy + (y + g) * sy, w: (w - 2 * g) * sx, h: (h - 2 * g) * sy });
+    if (u.title) els.push({ id: `l${ui}t`, type: 'label', name: u.title, x: u.ox, y: 0.5, w: u.width, h: 5 });
     for (const [name, ...r] of u.tables) els.push({ id: 't' + name, type: 'table', name, shape: 'rect', ...box(r) });
-    els.push({ id: `l${ui}b`, type: 'label', name: 'BAR', fill: true, ...box(u.bar) });
+    u.labels.forEach(([name, x, y, w, h, style], li) => {
+      els.push({ id: `l${ui}_${li}`, type: 'label', name, [style]: true, ...box([x, y, w, h], style === 'wall' ? 0 : gap) });
+    });
   });
   return els;
 }
@@ -89,7 +105,10 @@ async function renderTables() {
   floor.classList.toggle('editing', floorEdit);
   floor.innerHTML = getLayout().map((e) => {
     const pos = `left:${e.x}%;top:${e.y}%;width:${e.w}%;height:${e.h}%`;
-    if (e.type === 'label') return `<div class="flabel ${e.fill ? 'filled' : ''}" data-id="${e.id}" style="${pos}">${esc(e.name)}</div>`;
+    if (e.type === 'label') {
+      const cls = [e.fill && 'filled', e.wall && 'wall', e.h > e.w * 4 / 3 * 1.2 && 'tall'].filter(Boolean).join(' ');
+      return `<div class="flabel ${cls}" data-id="${e.id}" style="${pos}">${esc(e.name)}</div>`;
+    }
     const orders = openByTable[e.id] || [];
     const busy = orders.length > 0;
     const since = busy ? Math.min(...orders.map((o) => o.createdAt)) : 0;
