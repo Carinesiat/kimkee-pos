@@ -49,7 +49,9 @@ const DEFAULT_SETTINGS = {
   takeawayFee: 0.5,
   sstOnSc: false,
   cashRounding: true,
-  overrides: {}, // item id -> { price (RM), off (sold out) }
+  overrides: {}, // item id -> { off: true } when sold out on this iPad
+  outlet: '', // outlet id from OUTLETS, set once per iPad
+  outletKey: '',
 };
 let settings = Object.assign({}, DEFAULT_SETTINGS, store('pos.settings') || {});
 const saveSettings = () => store('pos.settings', settings);
@@ -65,7 +67,8 @@ for (const cat of CATEGORIES) {
     ITEMS[it.id] = it;
   }
 }
-const itemPrice = (it) => toSen(settings.overrides[it.id]?.price ?? it.price);
+// Prices come from menu.js only, so every outlet charges the same.
+const itemPrice = (it) => toSen(it.price);
 const itemOff = (it) => !!settings.overrides[it.id]?.off;
 
 // ---------- database (IndexedDB) ----------
@@ -73,27 +76,114 @@ const DB = {
   db: null,
   open() {
     return new Promise((resolve, reject) => {
-      const r = indexedDB.open('kimkee-pos', 1);
-      r.onupgradeneeded = () => {
-        const s = r.result.createObjectStore('orders', { keyPath: 'id' });
-        s.createIndex('day', 'day');
-        s.createIndex('status', 'status');
+      const r = indexedDB.open('kimkee-pos', 2);
+      r.onupgradeneeded = (e) => {
+        const s = e.oldVersion < 1 ? r.result.createObjectStore('orders', { keyPath: 'id' }) : r.transaction.objectStore('orders');
+        if (e.oldVersion < 1) {
+          s.createIndex('day', 'day');
+          s.createIndex('status', 'status');
+        }
+        if (e.oldVersion < 2) {
+          // dirty = 1 means the order still has to be uploaded.
+          s.createIndex('dirty', 'dirty');
+          s.openCursor().onsuccess = (ev) => {
+            const c = ev.target.result;
+            if (c) { c.update({ ...c.value, dirty: 1 }); c.continue(); }
+          };
+        }
       };
       r.onsuccess = () => { this.db = r.result; resolve(); };
       r.onerror = () => reject(r.error);
     });
   },
   req(r) { return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  done(t) { return new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); },
   async put(o) {
+    o.updatedAt = Date.now();
+    o.dirty = 1;
     const t = this.db.transaction('orders', 'readwrite');
     t.objectStore('orders').put(o);
-    await new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
+    await this.done(t);
+    Sync.run();
+  },
+  dirty(limit = 100) { return this.req(this.db.transaction('orders').objectStore('orders').index('dirty').getAll(1, limit)); },
+  dirtyCount() { return this.req(this.db.transaction('orders').objectStore('orders').index('dirty').count(1)); },
+  // Mark uploaded orders clean, unless they were changed again while uploading.
+  async markClean(list) {
+    const t = this.db.transaction('orders', 'readwrite');
+    const s = t.objectStore('orders');
+    for (const o of list) {
+      s.get(o.id).onsuccess = (e) => {
+        const cur = e.target.result;
+        if (cur && cur.updatedAt === o.updatedAt) s.put({ ...cur, dirty: 0 });
+      };
+    }
+    await this.done(t);
   },
   get(id) { return this.req(this.db.transaction('orders').objectStore('orders').get(id)); },
   byDay(day) { return this.req(this.db.transaction('orders').objectStore('orders').index('day').getAll(day)); },
   byStatus(st) { return this.req(this.db.transaction('orders').objectStore('orders').index('status').getAll(st)); },
   all() { return this.req(this.db.transaction('orders').objectStore('orders').getAll()); },
 };
+
+// ---------- cloud sync ----------
+// Orders are always saved on the iPad first; this uploads them whenever there is internet.
+async function pushOrders(outlet, key, orders) {
+  const res = await fetch(`${CLOUD.url}/rest/v1/rpc/pos_push_orders`, {
+    method: 'POST',
+    headers: { apikey: CLOUD.key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_outlet: outlet, p_key: key, p_orders: orders }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw Object.assign(new Error(text), { badKey: /invalid outlet key/.test(text) });
+  }
+  return res.json();
+}
+
+const Sync = {
+  busy: false,
+  again: false,
+  pending: 0,
+  lastOk: store('pos.lastSync'),
+  error: '', // '' | 'key' | 'net'
+  async run() {
+    if (!DB.db) return;
+    if (this.busy) { this.again = true; return; }
+    this.busy = true;
+    try {
+      if (settings.outlet && settings.outletKey && navigator.onLine !== false) {
+        let batch;
+        while ((batch = await DB.dirty(100)).length) {
+          await pushOrders(settings.outlet, settings.outletKey, batch.map(({ dirty, ...o }) => o));
+          await DB.markClean(batch);
+        }
+        this.lastOk = Date.now();
+        store('pos.lastSync', this.lastOk);
+        this.error = '';
+      }
+    } catch (e) {
+      this.error = e.badKey ? 'key' : 'net';
+    }
+    this.pending = await DB.dirtyCount().catch(() => 0);
+    this.busy = false;
+    renderSyncPill();
+    if (this.again) { this.again = false; this.run(); }
+  },
+};
+
+function renderSyncPill() {
+  const p = $('#syncPill');
+  const outlet = OUTLETS.find((o) => o.id === settings.outlet);
+  $('#outletName').textContent = outlet ? '· ' + outlet.name : '';
+  let text, cls;
+  if (!outlet || !settings.outletKey) { text = '☁ 未设定分店'; cls = 'warn'; }
+  else if (Sync.error === 'key') { text = '⚠ 设备密码错误'; cls = 'bad'; }
+  else if (Sync.pending) { text = `☁ ${Sync.pending} 张待上传${Sync.error ? ' · 离线' : ''}`; cls = 'warn'; }
+  else { text = `☁ 已同步${Sync.lastOk ? ' ' + timeStr(Sync.lastOk) : ''}`; cls = 'ok'; }
+  p.textContent = text;
+  p.className = 'sync-pill ' + cls;
+}
 
 async function nextOrderNo(day) {
   const list = await DB.byDay(day);
@@ -451,7 +541,7 @@ function openPaySheet() {
     if (!b) return;
     if (b.dataset.m) {
       method = b.dataset.m; sync();
-      if (method === 'cash') setTimeout(() => $('#tendered', s).focus(), 50);
+      if (method === 'cash') setTimeout(() => $('#tendered', s)?.focus(), 50);
     } else if (b.dataset.t) {
       tendered = b.dataset.t === 'exact' ? fmt(due()) : b.dataset.t;
       $('#tendered', s).value = tendered; sync();
@@ -704,6 +794,19 @@ function renderSettings() {
   $('#settingsBody').innerHTML = `
     <div class="page-head"><h2>设置 <small>Settings</small></h2><div class="spacer"></div>
       <button class="btn primary" id="btnSaveSettings">保存 Save</button></div>
+    <div class="panel"><h3>分店 Outlet <small>— 订单会自动上传，老板可以远程查看 · Orders upload automatically</small></h3>
+      <div class="settings-grid">
+        <label class="field"><span>这台 iPad 是哪间分店？ <small>Outlet</small></span>
+          <select id="sOutlet"><option value="">— 请选择 Choose —</option>
+            ${OUTLETS.map((o) => `<option value="${o.id}" ${o.id === settings.outlet ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>设备密码 <small>Device key</small></span>
+          <input id="sOutletKey" value="${esc(settings.outletKey)}" placeholder="XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <button class="btn gold" id="btnConnect">连接 Connect</button>
+      <span id="connectMsg" style="margin-left:10px;color:var(--muted)">${settings.outlet && settings.outletKey
+        ? (Sync.error === 'key' ? '⚠ 设备密码错误 Wrong key' : `已连接 Connected · ${Sync.pending ? Sync.pending + ' 张待上传' : '全部已上传'}`)
+        : '还没设定 Not set up'}</span>
+    </div>
     <div class="panel"><h3>店铺资料 Shop (收据上显示 shown on receipt)</h3>
       <div class="settings-grid">
         <label class="field"><span>店名 Name</span><input id="sShopName" value="${esc(settings.shopName)}"></label>
@@ -725,12 +828,13 @@ function renderSettings() {
       <button class="btn ghost" id="btnBackup">备份 Backup</button>
       <button class="btn ghost" id="btnRestore">恢复 Restore</button>
     </div>
-    <div class="panel"><h3>菜单 Menu — 价格和停售 Prices & sold out</h3>
+    <div class="panel"><h3>菜单 Menu — 停售 Sold out</h3>
+      <p style="margin:0 0 10px;color:var(--muted)">价格所有分店统一，要改价格请联系总店。<br>Prices are the same for all outlets.</p>
       <table class="menu-admin">
         <tr><th>编号</th><th>品项</th><th class="r">价格 RM</th><th class="r">停售</th></tr>
         ${CATEGORIES.map((c) => `<tr class="cat-row"><td colspan="4">${esc(c.zh)} ${esc(c.en)}</td></tr>` + c.items.map((it) => `
           <tr><td>${esc(it.code || '')}</td><td>${esc(it.zh)} <small>${esc(it.en)}</small></td>
-            <td class="r"><input type="number" step="0.1" inputmode="decimal" data-price="${esc(it.id)}" value="${(ov[it.id]?.price ?? it.price).toFixed(2)}"></td>
+            <td class="r">${it.price.toFixed(2)}</td>
             <td class="r"><input type="checkbox" data-off="${esc(it.id)}" ${ov[it.id]?.off ? 'checked' : ''}></td></tr>`).join('')).join('')}
       </table>
     </div>`;
@@ -747,19 +851,34 @@ function saveSettingsFromForm() {
   settings.sstOnSc = $('#sSstOnSc').checked;
   settings.cashRounding = $('#sRound').checked;
   const ov = {};
-  for (const inp of $$('[data-price]')) {
-    const it = ITEMS[inp.dataset.price];
-    const p = parseFloat(inp.value);
-    const off = $(`[data-off="${CSS.escape(it.id)}"]`).checked;
-    const entry = {};
-    if (Number.isFinite(p) && p >= 0 && toSen(p) !== toSen(it.price)) entry.price = Math.round(p * 100) / 100;
-    if (off) entry.off = true;
-    if (Object.keys(entry).length) ov[it.id] = entry;
-  }
+  for (const inp of $$('[data-off]')) if (inp.checked) ov[inp.dataset.off] = { off: true };
   settings.overrides = ov;
   saveSettings();
   renderItems(); renderCart();
   toast('已保存 Saved');
+}
+
+// Checks the device key with the server (an empty upload), then saves the outlet on this iPad.
+async function connectOutlet() {
+  const outlet = OUTLETS.find((o) => o.id === $('#sOutlet').value);
+  const key = $('#sOutletKey').value.trim().toUpperCase();
+  const msg = $('#connectMsg');
+  if (!outlet || !key) { msg.textContent = '请选分店并输入设备密码 Choose outlet and enter key'; return; }
+  msg.textContent = '连接中… Connecting…';
+  try {
+    await pushOrders(outlet.id, key, []);
+  } catch (e) {
+    msg.textContent = e.badKey ? '⚠ 设备密码不对 Wrong key' : '⚠ 连不上网络，请检查 WiFi · No internet';
+    return;
+  }
+  settings.outlet = outlet.id;
+  settings.outletKey = key;
+  if (!settings.shopAddr) settings.shopAddr = outlet.addr;
+  saveSettings();
+  Sync.error = '';
+  await Sync.run();
+  renderSettings();
+  toast(`已连接 ${outlet.name}`);
 }
 
 async function backup() {
@@ -800,6 +919,11 @@ function tickClock() {
 // ---------- wiring ----------
 function wire() {
   $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) showView(b.dataset.view); };
+  $('#syncPill').onclick = () => {
+    if (!settings.outlet || !settings.outletKey || Sync.error === 'key') { showView('settings'); return; }
+    toast('正在上传 Uploading…');
+    Sync.run();
+  };
   $('#catList').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -867,6 +991,7 @@ function wire() {
   $('#settingsBody').onclick = (e) => {
     const id = e.target.closest('button')?.id;
     if (id === 'btnSaveSettings') saveSettingsFromForm();
+    else if (id === 'btnConnect') connectOutlet();
     else if (id === 'btnBackup') backup();
     else if (id === 'btnRestore') $('#restoreFile').click();
   };
@@ -877,12 +1002,16 @@ async function init() {
   wire();
   renderCats(); renderItems(); renderCart();
   tickClock(); setInterval(tickClock, 15000);
+  renderSyncPill();
   try {
     await DB.open();
     refreshOpenBadge();
+    Sync.run();
   } catch (e) {
     toast('无法打开数据库 Cannot open storage');
   }
+  setInterval(() => Sync.run(), 60000);
+  window.addEventListener('online', () => Sync.run());
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

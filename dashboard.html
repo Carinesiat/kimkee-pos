@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#9b2226">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>金記 老板后台</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { overflow: auto; user-select: text; -webkit-user-select: text; }
+  #app { height: auto; min-height: 100vh; }
+  .page { height: auto; overflow: visible; max-width: 1200px; margin: 0 auto; }
+  .login { max-width: 380px; margin: 60px auto; }
+  .login .btn { width: 100%; margin-top: 6px; }
+  .link { color: var(--red); text-decoration: underline; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .outlet-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: #bbb; }
+  .outlet-dot.on { background: var(--green); }
+  .order-row { grid-template-columns: 70px 120px 70px 1fr auto auto; }
+  @media (max-width: 700px) {
+    .order-row { grid-template-columns: 56px 1fr auto; }
+    .order-row .sum, .order-row .hide-sm { display: none; }
+    .cards { grid-template-columns: 1fr 1fr; }
+    .tabs { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" src="logo.png" alt="金記麵家 Kim Kee">
+      <div><b>金記 老板后台</b><small>Owner Dashboard</small></div>
+    </div>
+    <div style="margin-left:auto" id="who"></div>
+  </header>
+  <main id="main"></main>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="dashboard.js"></script>
+</body>
+</html>

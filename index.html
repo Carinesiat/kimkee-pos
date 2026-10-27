@@ -19,8 +19,9 @@
   <header class="topbar">
     <div class="brand">
       <img class="logo" src="logo.png" alt="金記麵家 Kim Kee">
-      <div><b>金記麵家 POS</b><small id="clock"></small></div>
+      <div><b>金記麵家 POS <span id="outletName"></span></b><small id="clock"></small></div>
     </div>
+    <button class="sync-pill" id="syncPill"></button>
     <nav class="tabs" id="tabs">
       <button data-view="order" class="active">点单<small>Order</small></button>
       <button data-view="orders">订单<small>Orders</small><span class="badge hidden" id="openBadge"></span></button>
@@ -98,6 +99,7 @@
 <div id="printArea"></div>
 <input type="file" id="restoreFile" accept="application/json,.json" hidden>
 
+<script src="config.js"></script>
 <script src="menu.js"></script>
 <script src="app.js"></script>
 </body>

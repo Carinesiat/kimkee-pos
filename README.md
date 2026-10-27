@@ -11,7 +11,9 @@ Offline point-of-sale for Kim Kee Noodle, built for one iPad. Plain HTML/CSS/JS,
 - Hold an order (pay later), reopen it from Orders
 - Orders list per day, reprint, void
 - Daily report by payment method, dine-in/takeaway and items sold; print or export CSV
-- Settings: receipt header, rates, price changes and sold-out per item, backup/restore
+- Settings: receipt header, rates, sold-out per item, backup/restore (prices are the same for every outlet, set in `menu.js`)
+- Cloud sync: each iPad is linked to an outlet with a device key and uploads orders to Supabase when online
+- Owner dashboard (`dashboard.html`): sign in to see every outlet's sales, payments, items and orders
 
 Orders are stored in the iPad browser's IndexedDB. **Back up weekly** from Settings → Backup.
 
