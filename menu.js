@@ -170,7 +170,9 @@ const CATEGORIES = [
     { code: 'K08', zh: '雀巢咖啡', en: 'Nescafe', price: 5.80, opts: ['temp'] },
     { code: 'K09', zh: '白咖啡', en: 'White Coffee', price: 5.80, opts: ['temp'] },
     { code: 'K10', zh: '三色奶茶', en: '3C Milk Tea', price: 5.80, note: '冷 Cold' },
+    { code: 'K10C', zh: 'Gula Melaka 金香奶茶', en: 'Gula Melaka Signature Milk Tea', price: 7.80, note: '冷 Cold' },
     { code: 'K11', zh: '三色咖啡', en: '3C Coffee', price: 5.80, note: '冷 Cold' },
+    { code: 'K11C', zh: 'Gula Melaka 金香咖啡', en: 'Gula Melaka Signature Coffee', price: 7.80, note: '冷 Cold' },
   ] },
   { id: 'drink', zh: '饮料', en: 'Beverage', items: [
     { code: 'K12', zh: '百香果', en: 'Passion Fruits', price: 5.80 },
