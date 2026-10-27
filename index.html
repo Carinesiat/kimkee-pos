@@ -47,6 +47,7 @@
             <button data-mode="dine">堂食 <small>Dine-in</small></button>
             <button data-mode="take">外带 <small>Takeaway</small></button>
           </div>
+          <input class="remark-input" id="remarkInput" placeholder="备注 / 会员电话 · Remark / member phone" autocomplete="off" autocorrect="off" spellcheck="false">
           <div class="cart-meta" id="cartMeta"></div>
         </div>
         <div class="cart-lines" id="cartLines"></div>
@@ -64,6 +65,8 @@
         <div class="page-head">
           <h2>订单 <small>Orders</small></h2>
           <input type="date" id="ordersDate">
+          <input type="search" id="ordersSearch" class="remark-input" style="width:220px;margin:0" placeholder="搜电话 / 备注 · Search">
+
           <div class="seg small" id="ordersFilter">
             <button data-f="all" class="active">全部 All</button>
             <button data-f="open">未付 Unpaid</button>

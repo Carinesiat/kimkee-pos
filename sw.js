@@ -1,6 +1,6 @@
 // Offline support: serve the app from cache, refresh the cache in the background when online.
 // Bump CACHE when files are added or removed.
-const CACHE = 'kimkee-pos-v3';
+const CACHE = 'kimkee-pos-v4';
 const FILES = ['./', './index.html', './styles.css', './config.js', './menu.js', './app.js', './manifest.json',
   './logo.png', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 

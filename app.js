@@ -233,8 +233,8 @@ const cashRound = (total) => (settings.cashRounding ? Math.round(total / 5) * 5 
 const rateSnapshot = () => ({ sstRate: settings.sstRate, scRate: settings.scRate, takeawayFee: settings.takeawayFee, sstOnSc: settings.sstOnSc });
 
 // ---------- cart ----------
-// cart.mode is the default dine-in / takeaway for newly added lines.
-let cart = store('pos.cart') || { mode: 'dine', lines: [], orderId: null, label: '' };
+// cart.mode is the default dine-in / takeaway for newly added lines; cart.remark is free text such as a member phone.
+let cart = store('pos.cart') || { mode: 'dine', lines: [], orderId: null, label: '', remark: '' };
 for (const l of cart.lines) l.pack ||= defaultPack(l.addon, cart.mode);
 const saveCart = () => store('pos.cart', cart);
 let lineSeq = Date.now();
@@ -256,7 +256,7 @@ function makeLine(it, opts = [], note = '', qty = 1, pack = defaultPack(it.addon
 
 function clearCart() {
   // Every new order starts as dine-in so a takeaway charge is never carried over by mistake.
-  cart = { mode: 'dine', lines: [], orderId: null, label: '' };
+  cart = { mode: 'dine', lines: [], orderId: null, label: '', remark: '' };
   saveCart();
   renderCart();
 }
@@ -306,6 +306,7 @@ function onItemTap(id) {
 
 function renderCart() {
   $$('#modeSeg button').forEach((b) => b.classList.toggle('active', b.dataset.mode === cart.mode));
+  if (document.activeElement !== $('#remarkInput')) $('#remarkInput').value = cart.remark || '';
   const count = cart.lines.reduce((a, l) => a + l.qty, 0);
   const mixed = cart.lines.length && orderMode(cart.lines) === 'mixed';
   $('#cartMeta').innerHTML = `<span>${cart.orderId ? `<b>挂单 #${esc(cart.orderId.split('-').pop())}</b>${cart.label ? ' · ' + esc(cart.label) : ''}` : '新订单 New order'}${mixed ? ' · <b>堂食+外带</b>' : ''}</span><span>${count} 件 items</span>`;
@@ -453,6 +454,7 @@ function buildOrder(base) {
   return Object.assign(base, {
     mode: orderMode(cart.lines),
     label: cart.label || '',
+    remark: (cart.remark || '').trim(),
     lines: cart.lines.map((l) => ({ ...l })),
     totals,
     rates: rateSnapshot(),
@@ -590,6 +592,7 @@ function receiptHtml(o) {
     <hr>
     <div class="r"><span>单号 No. <b>#${pad(o.no)}</b></span><span>${MODE_LABEL[o.mode]}</span></div>
     <div>${dateTimeStr(o.paidAt || o.createdAt)}${o.label ? ' · ' + esc(o.label) : ''}</div>
+    ${o.remark ? `<div>备注 Remark: ${esc(o.remark)}</div>` : ''}
     <hr>
     ${o.lines.map((l) => `
       <div class="r"><span>${l.qty} × ${l.code ? esc(l.code) + ' ' : ''}${esc(l.zh)}</span><span>${fmt(lineUnit(l) * l.qty)}</span></div>
@@ -622,13 +625,15 @@ async function renderOrders() {
   const day = $('#ordersDate').value || dayKey();
   let list = (await DB.byDay(day)).sort((a, b) => b.no - a.no);
   if (ordersFilter !== 'all') list = list.filter((o) => o.status === ordersFilter);
+  const find = $('#ordersSearch').value.trim().toLowerCase();
+  if (find) list = list.filter((o) => `${o.remark || ''} ${o.label || ''} ${o.no}`.toLowerCase().includes(find));
   $$('#ordersFilter button').forEach((b) => b.classList.toggle('active', b.dataset.f === ordersFilter));
   const label = { open: '未付 Unpaid', paid: '已付 Paid', void: '作废 Void' };
   $('#ordersList').innerHTML = list.length ? list.map((o) => `
     <button class="order-row" data-id="${o.id}">
       <span class="no">#${pad(o.no)}</span>
       <span>${timeStr(o.createdAt)}<br><small>${MODE_SHORT[o.mode]}</small></span>
-      <span class="sum">${o.label ? `<b>${esc(o.label)}</b> · ` : ''}${o.lines.map((l) => `${l.qty}×${esc(l.code || l.zh)}`).join(', ')}</span>
+      <span class="sum">${o.remark ? `<span class="remark">☎ ${esc(o.remark)}</span> · ` : ''}${o.label ? `<b>${esc(o.label)}</b> · ` : ''}${o.lines.map((l) => `${l.qty}×${esc(l.code || l.zh)}`).join(', ')}</span>
       <span class="pill ${o.status}">${label[o.status]}${o.payment ? ' · ' + methodName(o.payment.method) : ''}</span>
       <span class="amt">${fmt(o.totals.paid ?? o.totals.total)}</span>
     </button>`).join('') : '<div class="empty">没有订单 No orders</div>';
@@ -645,6 +650,7 @@ async function openOrderDetail(id) {
       ${o.status === 'open' ? '<button class="btn danger" data-void>取消订单 Cancel</button>' : ''}
       <div class="spacer"></div>
       <button class="btn ghost" data-x>关闭</button>
+      ${o.status !== 'void' ? '<button class="btn ghost" data-remark>备注 Remark</button>' : ''}
       ${o.status !== 'void' ? '<button class="btn ghost" data-print>打印 Print</button>' : ''}
       ${o.status === 'open' ? '<button class="btn primary" data-load>继续/结账 Open</button>' : ''}
     </div>`);
@@ -653,6 +659,7 @@ async function openOrderDetail(id) {
     if (!b) return;
     if (b.hasAttribute('data-x')) closeModal();
     else if (b.hasAttribute('data-print')) printReceipt(o);
+    else if (b.hasAttribute('data-remark')) editRemark(o);
     else if (b.hasAttribute('data-void')) {
       confirmSheet(`作废订单 #${pad(o.no)}？`, '作废后不会计入营业额 · Voided orders are excluded from sales', '确定作废 Void', async () => {
         o.status = 'void'; o.voidedAt = Date.now();
@@ -662,7 +669,7 @@ async function openOrderDetail(id) {
       }, true);
     } else if (b.hasAttribute('data-load')) {
       const load = () => {
-        cart = { mode: o.mode === 'take' ? 'take' : 'dine', lines: o.lines.map((l) => ({ ...l })), orderId: o.id, label: o.label || '' };
+        cart = { mode: o.mode === 'take' ? 'take' : 'dine', lines: o.lines.map((l) => ({ ...l })), orderId: o.id, label: o.label || '', remark: o.remark || '' };
         saveCart(); renderCart(); closeModal(); showView('order');
       };
       if (cart.lines.length && cart.orderId !== o.id) {
@@ -670,6 +677,26 @@ async function openOrderDetail(id) {
       } else load();
     }
   };
+}
+
+// Add or fix the remark (e.g. member phone) on an order that is already saved.
+function editRemark(o) {
+  const s = openModal(`
+    <div class="sheet-head"><h3>备注 · 订单 #${pad(o.no)}</h3><div class="sub">会员电话或其他备注 · Member phone or remark</div></div>
+    <div class="sheet-body"><label class="field"><input id="editRemark" value="${esc(o.remark || '')}" placeholder="例如：012-3456789"></label></div>
+    <div class="sheet-foot"><div class="spacer"></div>
+      <button class="btn ghost" data-x>取消</button>
+      <button class="btn primary" data-ok>保存 Save</button></div>`);
+  $('[data-x]', s).onclick = () => openOrderDetail(o.id);
+  $('[data-ok]', s).onclick = async () => {
+    o.remark = $('#editRemark', s).value.trim();
+    await DB.put(o);
+    if (cart.orderId === o.id) { cart.remark = o.remark; saveCart(); renderCart(); }
+    toast('备注已保存 Saved');
+    renderOrders();
+    openOrderDetail(o.id);
+  };
+  setTimeout(() => $('#editRemark', s)?.focus(), 50);
 }
 
 async function refreshOpenBadge() {
@@ -777,10 +804,10 @@ async function exportCsv() {
   const day = $('#reportDate').value || dayKey();
   const list = (await DB.byDay(day)).sort((a, b) => a.no - b.no);
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['单号 No', '时间 Time', '状态 Status', '堂食/外带', '付款 Payment', '编号 Code', '品项 Item', '选项 Options', '备注 Note', '数量 Qty', '单价 Unit', '金额 Amount', '订单总计 Order total']];
+  const rows = [['单号 No', '时间 Time', '状态 Status', '备注 Remark', '堂食/外带', '付款 Payment', '编号 Code', '品项 Item', '选项 Options', '备注 Note', '数量 Qty', '单价 Unit', '金额 Amount', '订单总计 Order total']];
   for (const o of list) {
     for (const l of o.lines) {
-      rows.push([o.no, timeStr(o.createdAt), o.status, packTag(l.pack) || '堂食', o.payment ? methodName(o.payment.method) : '',
+      rows.push([o.no, timeStr(o.createdAt), o.status, o.remark || '', packTag(l.pack) || '堂食', o.payment ? methodName(o.payment.method) : '',
         l.code, l.zh, l.opts.map((x) => x.zh).join(' / '), l.note, l.qty, fmt(lineUnit(l)), fmt(lineUnit(l) * l.qty), fmt(o.totals.paid ?? o.totals.total)]);
     }
   }
@@ -946,6 +973,7 @@ function wire() {
   };
   $('#searchClear').onclick = () => { $('#search').value = ''; renderCats(); renderItems(); };
 
+  $('#remarkInput').oninput = (e) => { cart.remark = e.target.value; saveCart(); };
   $('#modeSeg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -980,6 +1008,7 @@ function wire() {
 
   $('#ordersDate').value = dayKey();
   $('#ordersDate').onchange = renderOrders;
+  $('#ordersSearch').oninput = renderOrders;
   $('#ordersFilter').onclick = (e) => { const b = e.target.closest('button'); if (b) { ordersFilter = b.dataset.f; renderOrders(); } };
   $('#ordersList').onclick = (e) => { const b = e.target.closest('.order-row'); if (b) openOrderDetail(b.dataset.id); };
 

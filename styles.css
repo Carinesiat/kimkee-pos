@@ -91,6 +91,9 @@ main { flex: 1; min-height: 0; }
 .seg button.active { background: var(--red); color: #fff; }
 .seg button.active small { color: #f4d9b5; }
 .seg.small button { padding: 7px 12px; flex: none; font-size: 14px; }
+.remark-input { width: 100%; margin-top: 8px; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; font-size: 15px; outline: none; }
+.remark-input:focus { border-color: var(--gold); }
+.remark { color: var(--red-dark); font-weight: 600; }
 .cart-meta { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: var(--muted); }
 .cart-meta b { color: var(--text); }
 .cart-lines { flex: 1; overflow-y: auto; padding: 4px 0; }

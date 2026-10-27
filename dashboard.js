@@ -14,7 +14,7 @@ const MODES = { dine: '堂食', take: '外带', mixed: '混合' };
 const STATUS = { open: '未付 Unpaid', paid: '已付 Paid', void: '作废 Void' };
 
 const sb = supabase.createClient(CLOUD.url, CLOUD.key);
-let state = { day: dayKey(), outlet: 'all', orders: [], outlets: [] };
+let state = { day: dayKey(), outlet: 'all', orders: [], outlets: [], find: '', found: null };
 let refreshTimer;
 
 function toast(msg) {
@@ -64,6 +64,14 @@ async function load() {
   ]);
   if (error) { toast('读取失败 ' + error.message); return; }
   state.orders = orders || [];
+  state.found = null;
+  // A remark search (e.g. member phone) looks across all dates.
+  if (state.find) {
+    let f = sb.from('pos_orders').select('*').ilike('remark', `%${state.find.replace(/[%_\\]/g, '\\$&')}%`)
+      .order('created_at', { ascending: false }).limit(200);
+    if (state.outlet !== 'all') f = f.eq('outlet_id', state.outlet);
+    state.found = (await f).data || [];
+  }
   state.lastSync = {};
   for (const r of last || []) state.lastSync[r.outlet_id] ||= r.synced_at;
   render();
@@ -107,6 +115,7 @@ function render() {
         ${OUTLETS.map((o) => `<button data-o="${o.id}" class="${state.outlet === o.id ? 'active' : ''}">${esc(o.name)}</button>`).join('')}
       </div>
       <div class="spacer"></div>
+      <input type="search" id="find" class="remark-input" style="width:220px;margin:0" placeholder="搜会员电话 / 备注 · Search" value="${esc(state.find)}">
       <button class="btn ghost" id="refresh">刷新 Refresh</button>
     </div>
     ${open ? `<div class="warn">${open} 张挂单还没结账 · unpaid, not counted in sales</div>` : ''}
@@ -142,16 +151,8 @@ function render() {
         ${items.map((i) => `<tr><td>${esc(i.code || '')}</td><td>${esc(i.zh)}</td><td class="r">${i.qty}</td><td class="r">${fmt(i.amt)}</td></tr>`).join('')}
       </table>` : '<div class="empty">还没有销售 No sales yet</div>'}</div>
     </div>
-    <div class="panel"><h3>订单 Orders (${all.length})</h3>
-      <div class="order-list">${all.length ? all.map((o) => `
-        <div class="order-row">
-          <span class="no">#${pad(o.no)}</span>
-          <span class="hide-sm">${esc(outletName(o.outlet_id))}</span>
-          <span class="hide-sm">${o.created_at ? timeStr(o.created_at) : ''}<br><small>${MODES[o.mode] || ''}</small></span>
-          <span class="sum">${o.label ? `<b>${esc(o.label)}</b> · ` : ''}${o.lines.map((l) => `${l.qty}×${esc(l.code || l.zh)}`).join(', ')}</span>
-          <span class="pill ${o.status}">${STATUS[o.status]}${o.payment ? ' · ' + (METHODS[o.payment.method] || '') : ''}</span>
-          <span class="amt">${fmt(o.totals.paid ?? o.totals.total)}</span>
-        </div>`).join('') : '<div class="empty">没有订单 No orders</div>'}</div>
+    <div class="panel"><h3>${state.found ? `搜索「${esc(state.find)}」· 所有日期 All dates (${state.found.length})` : `订单 Orders (${all.length})`}</h3>
+      <div class="order-list">${orderRows(state.found || all, !!state.found)}</div>
     </div>
     <p class="muted">每分钟自动刷新 · Refreshes every minute. 分店 iPad 有网络时才会上传。</p>
   </div>`;
@@ -159,6 +160,31 @@ function render() {
   $('#day').onchange = (e) => { state.day = e.target.value || dayKey(); load(); };
   $('#outletSeg').onclick = (e) => { const b = e.target.closest('button'); if (b) { state.outlet = b.dataset.o; load(); } };
   $('#refresh').onclick = () => { load(); toast('已刷新 Refreshed'); };
+  let findTimer;
+  $('#find').oninput = (e) => {
+    clearTimeout(findTimer);
+    findTimer = setTimeout(async () => {
+      state.find = e.target.value.trim();
+      await load();
+      const f = $('#find');
+      f.focus();
+      f.setSelectionRange(f.value.length, f.value.length);
+    }, 400);
+  };
+}
+
+function orderRows(list, showDate) {
+  const outletName = (id) => OUTLETS.find((o) => o.id === id)?.name || id;
+  if (!list.length) return '<div class="empty">没有订单 No orders</div>';
+  return list.map((o) => `
+    <div class="order-row">
+      <span class="no">#${pad(o.no)}</span>
+      <span class="hide-sm">${esc(outletName(o.outlet_id))}</span>
+      <span class="hide-sm">${showDate ? esc(o.day) + '<br>' : ''}${o.created_at ? timeStr(o.created_at) : ''}${showDate ? '' : `<br><small>${MODES[o.mode] || ''}</small>`}</span>
+      <span class="sum">${o.remark ? `<span class="remark">☎ ${esc(o.remark)}</span> · ` : ''}${o.label ? `<b>${esc(o.label)}</b> · ` : ''}${o.lines.map((l) => `${l.qty}×${esc(l.code || l.zh)}`).join(', ')}</span>
+      <span class="pill ${o.status}">${STATUS[o.status]}${o.payment ? ' · ' + (METHODS[o.payment.method] || '') : ''}</span>
+      <span class="amt">${fmt(o.totals.paid ?? o.totals.total)}</span>
+    </div>`).join('');
 }
 
 // ---------- start ----------
