@@ -38,8 +38,7 @@ small { font-size: 0.78em; color: var(--muted); font-weight: 400; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand b { display: block; font-size: 17px; letter-spacing: 1px; }
 .brand small { color: #f4d9b5; display: block; }
-.logo { width: 40px; height: 40px; border-radius: 50%; background: #fff; color: var(--red); display: grid; place-items: center;
-  font-weight: 700; font-size: 14px; border: 2px solid var(--gold); }
+.logo { width: 52px; height: 52px; border-radius: 10px; display: block; box-shadow: 0 0 0 2px rgba(255, 255, 255, .25); }
 .tabs { margin-left: auto; display: flex; gap: 6px; }
 .tabs button { position: relative; padding: 8px 18px; border-radius: 10px; color: #fff; font-size: 16px; font-weight: 600; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
 .tabs button small { color: #f4d9b5; }
