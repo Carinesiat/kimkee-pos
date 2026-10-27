@@ -23,7 +23,8 @@
     </div>
     <button class="sync-pill" id="syncPill"></button>
     <nav class="tabs" id="tabs">
-      <button data-view="order" class="active">点单<small>Order</small></button>
+      <button data-view="tables" class="active">桌位<small>Tables</small></button>
+      <button data-view="order">点单<small>Order</small></button>
       <button data-view="orders">订单<small>Orders</small><span class="badge hidden" id="openBadge"></span></button>
       <button data-view="report">报表<small>Report</small></button>
       <button data-view="settings">设置<small>Settings</small></button>
@@ -31,7 +32,12 @@
   </header>
 
   <main>
-    <section id="view-order" class="view active">
+    <section id="view-tables" class="view active">
+      <div class="floor-wrap" id="floorWrap"><div class="floor" id="floor"></div></div>
+      <aside class="floor-side" id="floorSide"></aside>
+    </section>
+
+    <section id="view-order" class="view">
       <div class="cat-list" id="catList"></div>
       <div class="menu-main">
         <form class="search" id="searchForm" autocomplete="off">
@@ -104,6 +110,7 @@
 
 <script src="config.js"></script>
 <script src="menu.js"></script>
+<script src="tables.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -49,6 +49,8 @@ const DEFAULT_SETTINGS = {
   takeawayFee: 0.5,
   sstOnSc: false,
   cashRounding: true,
+  lateMins: 60, // tables seated longer than this are highlighted
+  layout: null, // floor plan; null = default grid for the outlet
   overrides: {}, // item id -> { off: true } when sold out on this iPad
   outlet: '', // outlet id from OUTLETS, set once per iPad
   outletKey: '',
@@ -165,7 +167,7 @@ const Sync = {
     } catch (e) {
       this.error = e.badKey ? 'key' : 'net';
     }
-    this.pending = await DB.dirtyCount().catch(() => 0);
+    try { this.pending = await DB.dirtyCount(); } catch (e) { this.pending = 0; }
     this.busy = false;
     renderSyncPill();
     if (this.again) { this.again = false; this.run(); }
@@ -234,9 +236,19 @@ const rateSnapshot = () => ({ sstRate: settings.sstRate, scRate: settings.scRate
 
 // ---------- cart ----------
 // cart.mode is the default dine-in / takeaway for newly added lines; cart.remark is free text such as a member phone.
+// cart.table / cart.tableName link the cart to a table on the floor plan; cart.changed means there are unsaved edits.
 let cart = store('pos.cart') || { mode: 'dine', lines: [], orderId: null, label: '', remark: '' };
 for (const l of cart.lines) l.pack ||= defaultPack(l.addon, cart.mode);
-const saveCart = () => store('pos.cart', cart);
+const saveCart = () => { cart.changed = true; store('pos.cart', cart); };
+function setCart(c) {
+  cart = { ...c, changed: false };
+  store('pos.cart', cart);
+  renderCart();
+}
+const loadOrderToCart = (o) => setCart({
+  mode: o.mode === 'take' ? 'take' : 'dine', lines: o.lines.map((l) => ({ ...l })), orderId: o.id,
+  label: o.label || '', remark: o.remark || '', table: o.table, tableName: o.tableName,
+});
 let lineSeq = Date.now();
 
 function lineKey(l) { return l.itemId + '|' + l.opts.map((o) => o.zh).join(',') + '|' + l.note + '|' + l.pack; }
@@ -256,9 +268,7 @@ function makeLine(it, opts = [], note = '', qty = 1, pack = defaultPack(it.addon
 
 function clearCart() {
   // Every new order starts as dine-in so a takeaway charge is never carried over by mistake.
-  cart = { mode: 'dine', lines: [], orderId: null, label: '', remark: '' };
-  saveCart();
-  renderCart();
+  setCart({ mode: 'dine', lines: [], orderId: null, label: '', remark: '' });
 }
 
 // ---------- order view ----------
@@ -309,7 +319,10 @@ function renderCart() {
   if (document.activeElement !== $('#remarkInput')) $('#remarkInput').value = cart.remark || '';
   const count = cart.lines.reduce((a, l) => a + l.qty, 0);
   const mixed = cart.lines.length && orderMode(cart.lines) === 'mixed';
-  $('#cartMeta').innerHTML = `<span>${cart.orderId ? `<b>挂单 #${esc(cart.orderId.split('-').pop())}</b>${cart.label ? ' · ' + esc(cart.label) : ''}` : '新订单 New order'}${mixed ? ' · <b>堂食+外带</b>' : ''}</span><span>${count} 件 items</span>`;
+  const where = cart.table ? `<span class="table-tag">桌 ${esc(cart.tableName)}</span>` : '';
+  const what = cart.orderId ? `<b>${cart.table ? '加单' : '挂单'} #${esc(cart.orderId.split('-').pop())}</b>${cart.label ? ' · ' + esc(cart.label) : ''}` : '新订单 New order';
+  $('#cartMeta').innerHTML = `<span>${where}${what}${mixed ? ' · <b>堂食+外带</b>' : ''}</span><span>${count} 件 items</span>`;
+  $('#btnHold').innerHTML = cart.table ? '送单<small>Send</small>' : '挂单<small>Hold</small>';
 
   $('#cartLines').innerHTML = cart.lines.length ? cart.lines.map((l) => `
     <div class="line" data-lid="${l.lid}">
@@ -455,6 +468,8 @@ function buildOrder(base) {
     mode: orderMode(cart.lines),
     label: cart.label || '',
     remark: (cart.remark || '').trim(),
+    table: cart.table || null,
+    tableName: cart.tableName || '',
     lines: cart.lines.map((l) => ({ ...l })),
     totals,
     rates: rateSnapshot(),
@@ -462,18 +477,32 @@ function buildOrder(base) {
   });
 }
 
-async function ensureOrderBase() {
-  if (cart.orderId) {
-    const existing = await DB.get(cart.orderId);
-    if (existing && existing.status === 'open') return existing;
-  }
+async function newOrderBase() {
   const day = dayKey();
   const no = await nextOrderNo(day);
   return { id: `${day}-${pad(no)}`, day, no, createdAt: Date.now(), status: 'open' };
 }
 
-function holdOrder() {
+async function ensureOrderBase() {
+  if (cart.orderId) {
+    const existing = await DB.get(cart.orderId);
+    if (existing && existing.status === 'open') return existing;
+  }
+  return newOrderBase();
+}
+
+async function holdOrder() {
   if (!cart.lines.length) { toast('订单是空的 Order is empty'); return; }
+  if (cart.table) {
+    // Table orders are sent straight away and show up on the floor plan until paid.
+    const order = buildOrder(await ensureOrderBase());
+    await DB.put(order);
+    toast(`桌 ${order.tableName} 已送单 · Sent`);
+    clearCart();
+    refreshOpenBadge();
+    showView('tables');
+    return;
+  }
   const s = openModal(`
     <div class="sheet-head"><h3>挂单 Hold order</h3><div class="sub">先保存，客人吃完再结账 · Save now, pay later</div></div>
     <div class="sheet-body">
@@ -495,14 +524,22 @@ function holdOrder() {
   };
 }
 
-function openPaySheet() {
-  if (!cart.lines.length) return;
-  const t = calcTotals(cart.lines);
+// What is being paid: by default the cart, or (for split bills) part of a table's order.
+// build() returns the order to save as paid; after() runs once it is saved.
+const cartPayment = () => ({
+  lines: cart.lines,
+  build: async () => buildOrder(await ensureOrderBase()),
+  after: async () => clearCart(),
+});
+
+function openPaySheet(src = cartPayment()) {
+  if (!src.lines.length) return;
+  const t = calcTotals(src.lines);
   let method = null;
   let tendered = '';
 
   const s = openModal(`
-    <div class="sheet-head"><h3>结账 Payment</h3><div class="sub">${MODE_LABEL[orderMode(cart.lines)]} ·${cart.lines.reduce((a, l) => a + l.qty, 0)} 件 items</div></div>
+    <div class="sheet-head"><h3>结账 Payment</h3><div class="sub">${cart.table && src.lines === cart.lines ? `桌 ${esc(cart.tableName)} · ` : ''}${MODE_LABEL[orderMode(src.lines)]} · ${src.lines.reduce((a, l) => a + l.qty, 0)} 件 items</div></div>
     <div class="sheet-body">
       <div class="pay-total"><div class="big" id="payBig">${RM(t.total)}</div><div id="payRound" class="sub"></div></div>
       <div class="methods">${PAYMENT_METHODS.map((m) => `<button class="chip" data-m="${m.id}">${esc(m.zh)}<small>${esc(m.en)}</small></button>`).join('')}</div>
@@ -550,7 +587,7 @@ function openPaySheet() {
     } else if (b.hasAttribute('data-x')) closeModal();
     else if (b.hasAttribute('data-ok') && !b.disabled) {
       b.disabled = true;
-      const order = buildOrder(await ensureOrderBase());
+      const order = await src.build();
       const payable = due();
       order.totals.rounding = payable - order.totals.total;
       order.totals.paid = payable;
@@ -558,7 +595,7 @@ function openPaySheet() {
       order.paidAt = Date.now();
       order.payment = { method, tendered: method === 'cash' ? toSen(tendered) : payable, change: method === 'cash' ? toSen(tendered) - payable : 0 };
       await DB.put(order);
-      clearCart();
+      await src.after(order);
       refreshOpenBadge();
       showDone(order);
     }
@@ -571,16 +608,20 @@ function showDone(order) {
   const s = openModal(`
     <div class="sheet-body"><div class="done">
       <div class="tick">✓</div>
-      <div class="no">#${pad(order.no)}</div>
+      <div class="no">${order.table ? `桌 ${esc(order.tableName)} · ` : ''}#${pad(order.no)}</div>
       <div>${methodName(order.payment.method)} · ${RM(order.totals.paid)}</div>
       ${order.payment.method === 'cash' ? `<div class="change" style="justify-content:center;gap:14px"><span>找零 Change</span><b>${RM(order.payment.change)}</b></div>` : ''}
     </div></div>
     <div class="sheet-foot">
       <button class="btn ghost" data-print>打印收据 Print</button>
       <div class="spacer"></div>
-      <button class="btn primary" data-x>新订单 New order</button></div>`);
+      <button class="btn primary" data-x>${order.table ? '回桌位 Tables' : '新订单 New order'}</button></div>`);
   $('[data-print]', s).onclick = () => printReceipt(order);
-  $('[data-x]', s).onclick = () => { closeModal(); $('#search').focus(); };
+  $('[data-x]', s).onclick = () => {
+    closeModal();
+    if (order.table) showView('tables');
+    else { showView('order'); $('#search').focus(); }
+  };
 }
 
 // ---------- receipt / printing ----------
@@ -590,7 +631,7 @@ function receiptHtml(o) {
     <h1>${esc(settings.shopName)}</h1>
     ${settings.shopAddr ? `<div class="c">${esc(settings.shopAddr).replace(/\n/g, '<br>')}</div>` : ''}
     <hr>
-    <div class="r"><span>单号 No. <b>#${pad(o.no)}</b></span><span>${MODE_LABEL[o.mode]}</span></div>
+    <div class="r"><span>单号 No. <b>#${pad(o.no)}</b>${o.table ? ` · 桌 Table <b>${esc(o.tableName)}</b>` : ''}</span><span>${MODE_LABEL[o.mode]}</span></div>
     <div>${dateTimeStr(o.paidAt || o.createdAt)}${o.label ? ' · ' + esc(o.label) : ''}</div>
     ${o.remark ? `<div>备注 Remark: ${esc(o.remark)}</div>` : ''}
     <hr>
@@ -626,13 +667,13 @@ async function renderOrders() {
   let list = (await DB.byDay(day)).sort((a, b) => b.no - a.no);
   if (ordersFilter !== 'all') list = list.filter((o) => o.status === ordersFilter);
   const find = $('#ordersSearch').value.trim().toLowerCase();
-  if (find) list = list.filter((o) => `${o.remark || ''} ${o.label || ''} ${o.no}`.toLowerCase().includes(find));
+  if (find) list = list.filter((o) => `${o.remark || ''} ${o.label || ''} ${o.no} 桌${o.tableName || ''}`.toLowerCase().includes(find));
   $$('#ordersFilter button').forEach((b) => b.classList.toggle('active', b.dataset.f === ordersFilter));
-  const label = { open: '未付 Unpaid', paid: '已付 Paid', void: '作废 Void' };
+  const label = { open: '未付 Unpaid', paid: '已付 Paid', void: '作废 Void', merged: '已并单 Merged' };
   $('#ordersList').innerHTML = list.length ? list.map((o) => `
     <button class="order-row" data-id="${o.id}">
       <span class="no">#${pad(o.no)}</span>
-      <span>${timeStr(o.createdAt)}<br><small>${MODE_SHORT[o.mode]}</small></span>
+      <span>${timeStr(o.createdAt)}<br><small>${o.table ? '桌 ' + esc(o.tableName) : MODE_SHORT[o.mode]}</small></span>
       <span class="sum">${o.remark ? `<span class="remark">☎ ${esc(o.remark)}</span> · ` : ''}${o.label ? `<b>${esc(o.label)}</b> · ` : ''}${o.lines.map((l) => `${l.qty}×${esc(l.code || l.zh)}`).join(', ')}</span>
       <span class="pill ${o.status}">${label[o.status]}${o.payment ? ' · ' + methodName(o.payment.method) : ''}</span>
       <span class="amt">${fmt(o.totals.paid ?? o.totals.total)}</span>
@@ -643,15 +684,15 @@ async function openOrderDetail(id) {
   const o = await DB.get(id);
   if (!o) return;
   const s = openModal(`
-    <div class="sheet-head"><h3>订单 #${pad(o.no)}</h3><div class="sub">${dateTimeStr(o.createdAt)} · ${MODE_LABEL[o.mode]}${o.label ? ' · ' + esc(o.label) : ''}</div></div>
+    <div class="sheet-head"><h3>订单 #${pad(o.no)}${o.table ? ' · 桌 ' + esc(o.tableName) : ''}${o.status === 'merged' ? ' · 已并单 Merged' : ''}</h3><div class="sub">${dateTimeStr(o.createdAt)} · ${MODE_LABEL[o.mode]}${o.label ? ' · ' + esc(o.label) : ''}</div></div>
     <div class="sheet-body">${receiptHtml(o).replace('class="rc"', 'class="rc preview"')}</div>
     <div class="sheet-foot">
       ${o.status === 'paid' ? '<button class="btn danger" data-void>作废 Void</button>' : ''}
       ${o.status === 'open' ? '<button class="btn danger" data-void>取消订单 Cancel</button>' : ''}
       <div class="spacer"></div>
       <button class="btn ghost" data-x>关闭</button>
-      ${o.status !== 'void' ? '<button class="btn ghost" data-remark>备注 Remark</button>' : ''}
-      ${o.status !== 'void' ? '<button class="btn ghost" data-print>打印 Print</button>' : ''}
+      ${o.status === 'open' || o.status === 'paid' ? '<button class="btn ghost" data-remark>备注 Remark</button>' : ''}
+      ${o.status === 'open' || o.status === 'paid' ? '<button class="btn ghost" data-print>打印 Print</button>' : ''}
       ${o.status === 'open' ? '<button class="btn primary" data-load>继续/结账 Open</button>' : ''}
     </div>`);
   s.onclick = (e) => {
@@ -665,14 +706,11 @@ async function openOrderDetail(id) {
         o.status = 'void'; o.voidedAt = Date.now();
         await DB.put(o);
         toast(`#${pad(o.no)} 已作废`);
-        renderOrders(); refreshOpenBadge();
+        renderOrders(); refreshOpenBadge(); renderTables();
       }, true);
     } else if (b.hasAttribute('data-load')) {
-      const load = () => {
-        cart = { mode: o.mode === 'take' ? 'take' : 'dine', lines: o.lines.map((l) => ({ ...l })), orderId: o.id, label: o.label || '', remark: o.remark || '' };
-        saveCart(); renderCart(); closeModal(); showView('order');
-      };
-      if (cart.lines.length && cart.orderId !== o.id) {
+      const load = () => { loadOrderToCart(o); closeModal(); showView('order'); };
+      if (cart.changed && cart.lines.length && cart.orderId !== o.id) {
         confirmSheet('目前的订单还没处理', '载入挂单会清掉目前的订单 · Current cart will be cleared', '载入 Load', load);
       } else load();
     }
@@ -804,10 +842,10 @@ async function exportCsv() {
   const day = $('#reportDate').value || dayKey();
   const list = (await DB.byDay(day)).sort((a, b) => a.no - b.no);
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const rows = [['单号 No', '时间 Time', '状态 Status', '备注 Remark', '堂食/外带', '付款 Payment', '编号 Code', '品项 Item', '选项 Options', '备注 Note', '数量 Qty', '单价 Unit', '金额 Amount', '订单总计 Order total']];
+  const rows = [['单号 No', '时间 Time', '状态 Status', '桌 Table', '备注 Remark', '堂食/外带', '付款 Payment', '编号 Code', '品项 Item', '选项 Options', '备注 Note', '数量 Qty', '单价 Unit', '金额 Amount', '订单总计 Order total']];
   for (const o of list) {
     for (const l of o.lines) {
-      rows.push([o.no, timeStr(o.createdAt), o.status, o.remark || '', packTag(l.pack) || '堂食', o.payment ? methodName(o.payment.method) : '',
+      rows.push([o.no, timeStr(o.createdAt), o.status, o.tableName || '', o.remark || '', packTag(l.pack) || '堂食', o.payment ? methodName(o.payment.method) : '',
         l.code, l.zh, l.opts.map((x) => x.zh).join(' / '), l.note, l.qty, fmt(lineUnit(l)), fmt(lineUnit(l) * l.qty), fmt(o.totals.paid ?? o.totals.total)]);
     }
   }
@@ -850,6 +888,13 @@ function renderSettings() {
       <label class="toggle"><input type="checkbox" id="sSstOnSc" ${settings.sstOnSc ? 'checked' : ''}> SST 也算在服务费上 · Charge SST on service charge too</label>
       <label class="toggle"><input type="checkbox" id="sRound" ${settings.cashRounding ? 'checked' : ''}> 现金进位到 5 仙 · Round cash payments to nearest 5 sen</label>
     </div>
+    <div class="panel"><h3>桌位 Tables</h3>
+      <div class="settings-grid">
+        <label class="field"><span>坐超过几分钟变色提醒 <small>Highlight tables seated longer than (minutes)</small></span>
+          <input id="sLate" type="number" step="5" inputmode="numeric" value="${settings.lateMins || 60}"></label>
+      </div>
+      <p style="margin:0;color:var(--muted)">桌子的位置、桌号在「桌位」页按「编辑桌位」修改。<br>Arrange tables from the Tables page → Edit layout.</p>
+    </div>
     <div class="panel"><h3>数据 Data</h3>
       <p style="margin:0 0 10px;color:var(--muted)">所有订单只保存在这台 iPad 上，建议每星期备份一次。<br>All orders live only on this iPad — back up weekly.</p>
       <button class="btn ghost" id="btnBackup">备份 Backup</button>
@@ -877,6 +922,7 @@ function saveSettingsFromForm() {
   settings.takeawayFee = num('#sTake', settings.takeawayFee);
   settings.sstOnSc = $('#sSstOnSc').checked;
   settings.cashRounding = $('#sRound').checked;
+  settings.lateMins = Math.max(5, Math.round(num('#sLate', settings.lateMins || 60)));
   const ov = {};
   for (const inp of $$('[data-off]')) if (inp.checked) ov[inp.dataset.off] = { off: true };
   settings.overrides = ov;
@@ -932,6 +978,7 @@ async function restore(file) {
 function showView(v) {
   $$('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
   $$('.view').forEach((el) => el.classList.toggle('active', el.id === 'view-' + v));
+  if (v === 'tables') renderTables();
   if (v === 'orders') renderOrders();
   if (v === 'report') renderReport();
   if (v === 'settings') renderSettings();
@@ -1029,12 +1076,14 @@ function wire() {
 
 async function init() {
   wire();
+  wireTables();
   renderCats(); renderItems(); renderCart();
   tickClock(); setInterval(tickClock, 15000);
   renderSyncPill();
   try {
     await DB.open();
     refreshOpenBadge();
+    renderTables();
     Sync.run();
   } catch (e) {
     toast('无法打开数据库 Cannot open storage');

@@ -11,7 +11,7 @@ const lineUnit = (l) => l.base + (l.opts || []).reduce((a, o) => a + o.delta, 0)
 
 const METHODS = { cash: '现金 Cash', qr: 'QR', visa: 'Visa', master: 'Master', debit: 'Debit', bank: 'Bank In' };
 const MODES = { dine: '堂食', take: '外带', mixed: '混合' };
-const STATUS = { open: '未付 Unpaid', paid: '已付 Paid', void: '作废 Void' };
+const STATUS = { open: '未付 Unpaid', paid: '已付 Paid', void: '作废 Void', merged: '已并单 Merged' };
 
 const sb = supabase.createClient(CLOUD.url, CLOUD.key);
 let state = { day: dayKey(), outlet: 'all', orders: [], outlets: [], find: '', found: null };
@@ -100,6 +100,7 @@ function render() {
   const all = state.orders;
   const r = summarize(all);
   const open = all.filter((o) => o.status === 'open').length;
+  const busyTables = all.filter((o) => o.status === 'open' && o.table_no).length;
   const voids = all.filter((o) => o.status === 'void').length;
   const outletName = (id) => OUTLETS.find((o) => o.id === id)?.name || id;
   const perOutlet = OUTLETS.map((o) => ({ ...o, s: summarize(all.filter((x) => x.outlet_id === o.id)) }));
@@ -118,7 +119,7 @@ function render() {
       <input type="search" id="find" class="remark-input" style="width:220px;margin:0" placeholder="搜会员电话 / 备注 · Search" value="${esc(state.find)}">
       <button class="btn ghost" id="refresh">刷新 Refresh</button>
     </div>
-    ${open ? `<div class="warn">${open} 张挂单还没结账 · unpaid, not counted in sales</div>` : ''}
+    ${open ? `<div class="warn">${open} 张单还没结账${busyTables ? `（${busyTables} 桌用餐中）` : ''} · unpaid, not counted in sales</div>` : ''}
     <div class="cards">
       <div class="card hl"><div class="k">营业额 Sales</div><div class="v">RM ${fmt(r.sales)}</div></div>
       <div class="card"><div class="k">订单 Orders</div><div class="v">${r.count}</div></div>
@@ -180,7 +181,7 @@ function orderRows(list, showDate) {
     <div class="order-row">
       <span class="no">#${pad(o.no)}</span>
       <span class="hide-sm">${esc(outletName(o.outlet_id))}</span>
-      <span class="hide-sm">${showDate ? esc(o.day) + '<br>' : ''}${o.created_at ? timeStr(o.created_at) : ''}${showDate ? '' : `<br><small>${MODES[o.mode] || ''}</small>`}</span>
+      <span class="hide-sm">${showDate ? esc(o.day) + '<br>' : ''}${o.created_at ? timeStr(o.created_at) : ''}<br><small>${o.table_no ? '桌 ' + esc(o.table_no) : (MODES[o.mode] || '')}</small></span>
       <span class="sum">${o.remark ? `<span class="remark">☎ ${esc(o.remark)}</span> · ` : ''}${o.label ? `<b>${esc(o.label)}</b> · ` : ''}${o.lines.map((l) => `${l.qty}×${esc(l.code || l.zh)}`).join(', ')}</span>
       <span class="pill ${o.status}">${STATUS[o.status]}${o.payment ? ' · ' + (METHODS[o.payment.method] || '') : ''}</span>
       <span class="amt">${fmt(o.totals.paid ?? o.totals.total)}</span>

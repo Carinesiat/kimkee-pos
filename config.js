@@ -6,7 +6,8 @@ const CLOUD = {
   key: 'sb_publishable_U1ExztYURiTLDktmRA4KXQ_1ojiRmPi',
 };
 
+// tables: how many tables the default floor plan starts with (staff can rearrange it on the iPad).
 const OUTLETS = [
-  { id: 'bsd', name: 'Bandar Sri Damansara', addr: 'No. 6-G Jalan Cempaka SD 12/2,\nBandar Sri Damansara, 52200 Kuala Lumpur' },
-  { id: 'kepong', name: 'Kepong', addr: 'No. C-G-12, Fortune Avenue Kepong,\nJalan Metro Perdana 3, Taman Usahawan Kepong, 52100 Kuala Lumpur' },
+  { id: 'bsd', name: 'Bandar Sri Damansara', tables: 32, addr: 'No. 6-G Jalan Cempaka SD 12/2,\nBandar Sri Damansara, 52200 Kuala Lumpur' },
+  { id: 'kepong', name: 'Kepong', tables: 30, addr: 'No. C-G-12, Fortune Avenue Kepong,\nJalan Metro Perdana 3, Taman Usahawan Kepong, 52100 Kuala Lumpur' },
 ];

@@ -8,7 +8,8 @@ Offline point-of-sale for Kim Kee Noodle, built for one iPad. Plain HTML/CSS/JS,
 - Required options per item (noodle type, hot/cold, Teh/C/O, set drink, kid set milk…), quick kitchen notes
 - Dine-in / takeaway per item (takeaway +RM0.50, or takeaway with no charge); the top toggle switches the whole order. 10% service charge on dine-in items only, 6% SST on everything
 - Payments: Cash (with change and 5-sen rounding), QR, Visa, Master, Debit, Bank In
-- Hold an order (pay later), reopen it from Orders
+- Table plan (home screen): tables show amount and minutes seated, overdue tables highlighted; drag tables into the real shop layout; send, add items, move, merge and split bill per table
+- Counter / takeaway orders can be held without a table
 - Orders list per day, reprint, void
 - Daily report by payment method, dine-in/takeaway and items sold; print or export CSV
 - Settings: receipt header, rates, sold-out per item, backup/restore (prices are the same for every outlet, set in `menu.js`)
