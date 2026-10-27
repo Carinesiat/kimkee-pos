@@ -1,0 +1,14 @@
+{
+  "name": "金記麵家 POS",
+  "short_name": "金記 POS",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f3ec",
+  "theme_color": "#9b2226",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

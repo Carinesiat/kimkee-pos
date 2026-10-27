@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="金記 POS">
+<meta name="theme-color" content="#9b2226">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-512.png">
+<link rel="icon" href="icon-192.png">
+<title>金記 POS</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">金記</span>
+      <div><b>金記麵家 POS</b><small id="clock"></small></div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-view="order" class="active">点单<small>Order</small></button>
+      <button data-view="orders">订单<small>Orders</small><span class="badge hidden" id="openBadge"></span></button>
+      <button data-view="report">报表<small>Report</small></button>
+      <button data-view="settings">设置<small>Settings</small></button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-order" class="view active">
+      <div class="cat-list" id="catList"></div>
+      <div class="menu-main">
+        <form class="search" id="searchForm" autocomplete="off">
+          <input id="search" type="text" enterkeyhint="go" placeholder="输入编号或名称 · Code / name" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+          <button type="button" id="searchClear" class="hidden" aria-label="Clear">×</button>
+        </form>
+        <div class="cat-note" id="catNote"></div>
+        <div class="item-grid" id="itemGrid"></div>
+      </div>
+      <aside class="cart">
+        <div class="cart-head">
+          <div class="seg" id="modeSeg">
+            <button data-mode="dine">堂食 <small>Dine-in</small></button>
+            <button data-mode="take">外带 <small>Takeaway</small></button>
+          </div>
+          <div class="cart-meta" id="cartMeta"></div>
+        </div>
+        <div class="cart-lines" id="cartLines"></div>
+        <div class="cart-totals" id="cartTotals"></div>
+        <div class="cart-actions">
+          <button class="btn ghost" id="btnClear">清空<small>Clear</small></button>
+          <button class="btn ghost" id="btnHold">挂单<small>Hold</small></button>
+          <button class="btn primary" id="btnPay">结账<small>Pay</small></button>
+        </div>
+      </aside>
+    </section>
+
+    <section id="view-orders" class="view">
+      <div class="page">
+        <div class="page-head">
+          <h2>订单 <small>Orders</small></h2>
+          <input type="date" id="ordersDate">
+          <div class="seg small" id="ordersFilter">
+            <button data-f="all" class="active">全部 All</button>
+            <button data-f="open">未付 Unpaid</button>
+            <button data-f="paid">已付 Paid</button>
+            <button data-f="void">作废 Void</button>
+          </div>
+        </div>
+        <div id="ordersList" class="order-list"></div>
+      </div>
+    </section>
+
+    <section id="view-report" class="view">
+      <div class="page">
+        <div class="page-head">
+          <h2>日结报表 <small>Daily Report</small></h2>
+          <input type="date" id="reportDate">
+          <div class="spacer"></div>
+          <button class="btn ghost" id="btnPrintReport">打印 Print</button>
+          <button class="btn ghost" id="btnExportCsv">导出 CSV</button>
+        </div>
+        <div id="reportBody"></div>
+      </div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <div class="page" id="settingsBody"></div>
+    </section>
+  </main>
+</div>
+
+<div id="modal" class="modal hidden"><div class="sheet" id="sheet"></div></div>
+<div id="toast" class="toast"></div>
+<div id="printArea"></div>
+<input type="file" id="restoreFile" accept="application/json,.json" hidden>
+
+<script src="menu.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

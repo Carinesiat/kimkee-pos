@@ -1,0 +1,235 @@
+// 金記麵家 menu — from "Kim Kee Menu_2026.pdf" and "Breakfast Set 2026 - Latest.pdf".
+// Prices are in RM. To change a price or mark an item sold out, use Settings in the app;
+// edit this file only to add or remove items.
+
+const OPTION_GROUPS = {
+  panMee: { zh: '面类', en: 'Noodle', choices: [
+    { zh: '手捏', en: 'Pinched' }, { zh: '粗', en: 'Thick' }, { zh: '幼', en: 'Thin' },
+  ] },
+  otherNoodle: { zh: '面类', en: 'Noodle', choices: [
+    { zh: '老鼠粉', en: 'Lao Shu Fen' }, { zh: '云吞面', en: 'Egg Noodle' }, { zh: '米粉', en: 'Mi Hun' },
+    { zh: '面', en: 'Mee' }, { zh: '河粉', en: 'Hor Fun' },
+  ] },
+  bfNoodle: { zh: '面类', en: 'Noodle', choices: [
+    { zh: '米粉', en: 'Meehoon' }, { zh: '黄面', en: 'Mee' }, { zh: '老鼠粉', en: 'Lao Shu Fen' },
+    { zh: '河粉', en: 'Hor Fun' }, { zh: '云吞面', en: 'Egg Noodle' },
+  ] },
+  dryOrSoup: { zh: '干/汤', en: 'Dry / Soup', choices: [
+    { zh: '干', en: 'Dry' }, { zh: '汤', en: 'Soup' },
+  ] },
+  temp: { zh: '热/冷', en: 'Hot / Cold', choices: [
+    { zh: '热', en: 'Hot' }, { zh: '冷', en: 'Cold' },
+  ] },
+  setDrink: { zh: '套餐饮料', en: 'Set Drink', choices: [
+    { zh: '咖啡', en: 'Kopi' }, { zh: '奶茶', en: 'Teh' }, { zh: '茶啡', en: 'Cham' },
+    { zh: '雀巢咖啡', en: 'Nescafé', price: 2 }, { zh: '美禄', en: 'Milo', price: 2 },
+    { zh: '白咖啡', en: 'White Coffee', price: 2 },
+  ] },
+  kidSide: { zh: '配菜', en: 'Side', choices: [
+    { zh: '芝士豆腐', en: 'Cheese Tofu' }, { zh: '脆口豆腐鱼丸', en: 'Crispy Fish Tofu' },
+  ] },
+  kidMilk: { zh: '鲜奶', en: 'Fresh Milk', choices: [
+    { zh: '原味', en: 'Original' }, { zh: '巧克力', en: 'Chocolate' },
+  ] },
+};
+
+// Kopi / Teh / Cham come plain, C (evaporated milk) or O (no milk).
+const variant = (base, baseEn) => ({ zh: '种类', en: 'Type', choices: [
+  { zh: base, en: baseEn }, { zh: base + ' C', en: baseEn + ' C' }, { zh: base + ' O', en: baseEn + ' O' },
+] });
+
+// opts: option groups the staff must pick when adding the item.
+// addon: true means no takeaway charge on this item.
+const CATEGORIES = [
+  { id: 'bf', zh: '早餐套餐', en: 'Breakfast', note: '8am–12pm · 含一杯饮料 Drink included', items: [
+    { code: 'BF1', zh: '面包套餐', en: 'Toast Set', price: 6.80, opts: [
+      { zh: '早餐', en: 'Breakfast', choices: [
+        { zh: 'BF1A 加央牛油面包(烧)', en: 'Kaya Butter Toast + 2 Onsen Eggs' },
+        { zh: 'BF1A 加央牛油面包(蒸)', en: 'Kaya Butter Steam + 2 Onsen Eggs' },
+        { zh: 'BF1B 温泉蛋面包', en: 'Onsen Egg Toast' },
+        { zh: 'BF1C 咖喱汁温泉蛋面包', en: 'Onsen Egg Toast With Curry Sauce' },
+      ] }, 'setDrink', 'temp'] },
+    { code: 'BF2', zh: '金式酸辣米粉', en: 'Mee Siam', price: 7.80, opts: ['setDrink', 'temp'] },
+    { code: 'BF3', zh: '鸡蛋椰浆饭', en: 'Nasi Lemak With Egg', price: 7.80, opts: ['setDrink', 'temp'] },
+    { code: 'BF4', zh: '包点套餐', en: 'Pau Set', price: 7.80, opts: [
+      { zh: '包点', en: 'Pau', choices: [
+        { zh: 'BF4A 蜜汁叉烧包', en: 'Honey BBQ Pork Pau' },
+        { zh: 'BF4B 芝麻黑金包', en: 'Black Sesame Pau' },
+        { zh: 'BF4C 豆沙包', en: 'Mini Red Bean Pau' },
+        { zh: 'BF4D 梅菜包', en: 'Preserved Vegetable Pau' },
+      ] }, 'setDrink', 'temp'] },
+    { code: 'BF5', zh: '猪肠粉', en: 'Chee Cheong Fun', price: 9.80, opts: [
+      { zh: '酱料', en: 'Sauce', choices: [
+        { zh: '咖喱汤', en: 'Curry Soup' }, { zh: '甜酱', en: 'Sweet Sauce' }, { zh: '鸳鸯', en: 'Mix' },
+      ] }, 'setDrink', 'temp'] },
+    { code: 'BF6', zh: '猪肉粉', en: 'Pork Noodle', price: 10.80, opts: ['bfNoodle', 'setDrink', 'temp'] },
+    { code: 'BF7', zh: '福州面线', en: 'Mee Suah Soup With Fuzhou Ball', price: 10.80, opts: ['setDrink', 'temp'] },
+    { id: 'BFX1', code: '', zh: '早餐加 炸鸡', en: 'Add Fried Chicken', price: 7.80, addon: true },
+    { id: 'BFX2', code: '', zh: '早餐加 甜辣鸡', en: 'Add Ayam Masak Merah', price: 8.80, addon: true },
+    { id: 'BFX3', code: '', zh: '早餐加 炸鸡翅', en: 'Add Fried Chicken Wings', price: 4.80, addon: true },
+  ] },
+  { id: 'kid', zh: '儿童套餐', en: 'Kid Sets', note: '含鲜奶 + 玩具 Milk + Toy included', items: [
+    { code: 'K1', zh: '干捞肉碎板面', en: 'Dry Pan Mee With Minced Pork', price: 14.80, opts: ['kidSide', 'kidMilk'] },
+    { code: 'K2', zh: '肉碎干捞云吞面', en: 'Dry Egg Noodle With Minced Pork', price: 14.80, opts: ['kidSide', 'kidMilk'] },
+    { code: 'K3', zh: '特制肉碎饭', en: 'White Rice With Minced Pork', price: 14.80, opts: ['kidSide', 'kidMilk'] },
+    { code: 'K4', zh: '午餐肉饭', en: 'Luncheon Meat Rice', price: 14.80, opts: ['kidMilk'] },
+    { code: 'K5', zh: '清汤肉碎板面', en: 'Pan Mee Soup With Minced Pork', price: 14.80, opts: ['kidMilk'] },
+    { code: 'K6', zh: '清汤鱼饼米粉面', en: 'Meehoon Mee Soup With Fish Cake', price: 14.80, opts: ['kidMilk'] },
+  ] },
+  { id: 'panmee', zh: '板面', en: 'Pan Mee', items: [
+    { code: '01', zh: '瓦煲清汤板面', en: 'Claypot Pan Mee Soup', price: 10.80, opts: ['panMee'] },
+    { code: '02', zh: '瓦煲干捞板面', en: 'Claypot Dry Pan Mee', price: 11.80, opts: ['panMee'] },
+    { code: '03', zh: '瓦煲咖喱板面', en: 'Claypot Curry Pan Mee', price: 11.80, opts: ['panMee'] },
+    { code: '04S', zh: '瓦煲麻辣汤板面', en: 'Claypot Spicy Soup Pan Mee', price: 12.80, opts: ['panMee'] },
+    { code: '04D', zh: '瓦煲麻辣干捞板面', en: 'Claypot Spicy Dry Pan Mee', price: 12.80, opts: ['panMee'] },
+    { code: '05', zh: '瓦煲卤板面', en: 'Claypot Stewed Pan Mee', price: 11.80, opts: ['panMee'] },
+    { code: '06', zh: '虾米辣椒板面', en: 'Dry Chili Pan Mee', price: 12.80, opts: ['panMee'] },
+    { code: '07', zh: '韩式泡菜板面', en: 'Kim Chi Pan Mee', price: 15.80, opts: ['panMee'] },
+    { code: '08', zh: '瓦煲金式东炎板面', en: "Claypot Kim's Tomyum Pan Mee", price: 11.80, opts: ['panMee'] },
+    { code: '09', zh: '瓦煲番茄板面', en: 'Claypot Tomato Pan Mee', price: 13.80, opts: ['panMee'] },
+    { code: '10', zh: '瓦煲咸蛋板面', en: 'Claypot Salted Egg Pan Mee', price: 15.80, opts: ['panMee'] },
+  ] },
+  { id: 'yeemee', zh: '伊面', en: 'Yee Mee', items: [
+    { code: 'D01', zh: '瓦煲清汤伊面', en: 'Claypot Yee Mee Soup', price: 10.80 },
+    { code: 'D02', zh: '瓦煲干捞伊面', en: 'Claypot Dry Yee Mee', price: 11.80 },
+    { code: 'D03', zh: '瓦煲咖喱伊面', en: 'Claypot Curry Yee Mee', price: 12.80 },
+    { code: 'D04S', zh: '瓦煲麻辣汤伊面', en: 'Claypot Spicy Soup Yee Mee', price: 12.80 },
+    { code: 'D04D', zh: '瓦煲麻辣干捞伊面', en: 'Claypot Spicy Dry Yee Mee', price: 12.80 },
+    { code: 'D05', zh: '瓦煲卤伊面', en: 'Claypot Stewed Yee Mee', price: 11.80 },
+    { code: 'D06', zh: '瓦煲金式东炎伊面', en: "Claypot Kim's Tomyum Yee Mee", price: 11.80 },
+  ] },
+  { id: 'spinach', zh: '菠菜面', en: 'Spinach Mee', items: [
+    { code: 'E01', zh: '清汤菠菜面', en: 'Spinach Mee Soup', price: 10.80 },
+    { code: 'E02', zh: '干捞菠菜面', en: 'Dry Spinach Mee', price: 11.80 },
+    { code: 'E03', zh: '咖喱菠菜面', en: 'Curry Spinach Mee', price: 14.80 },
+    { code: 'E04S', zh: '麻辣汤菠菜面', en: 'Spicy Soup Spinach Mee', price: 14.80 },
+    { code: 'E04D', zh: '麻辣干捞菠菜面', en: 'Spicy Dry Spinach Mee', price: 14.80 },
+  ] },
+  { id: 'noodle', zh: '其它面类', en: 'Noodle', items: [
+    { code: 'F01', zh: '瓦煲老鼠粉', en: 'Claypot Lao Shu Fen', price: 10.80 },
+    { code: 'F02', zh: '叉烧云吞面', en: 'Egg Noodle With Char Siew', price: 10.80, opts: ['dryOrSoup'] },
+    { code: 'F03', zh: '干咖喱鸡云吞面', en: 'Dry Egg Noodle With Curry Chicken', price: 10.80 },
+    { code: 'F04', zh: '冬菇鸡脚云吞面', en: 'Dry Egg Noodle With Chicken Feet', price: 10.80 },
+    { code: 'F05', zh: '福州面线', en: 'Mee Suah Soup With Fu Zhou Ball', price: 10.80 },
+    { code: 'F06', zh: '肉碎溏心蛋云吞面', en: 'Mince Pork Egg Noodle With Soft Boiled Egg', price: 11.80 },
+    { code: 'F07', zh: '餐蛋面', en: 'Cān Dàn Miàn', price: 15.80 },
+    { code: 'G01', zh: '鱼丸粉', en: 'Fish Ball Noodle', price: 10.80, opts: ['otherNoodle'] },
+    { code: 'G02', zh: '猪肉粉', en: 'Pork Noodle', price: 10.80, opts: ['otherNoodle'] },
+    { code: 'G03', zh: '咖喱面', en: 'Curry Mee', price: 14.80, opts: ['otherNoodle'] },
+    { code: 'G04', zh: '金式酸辣米粉', en: 'Mee Siam', price: 6.80 },
+    { code: 'G05', zh: '虾面', en: 'Prawn Mee', price: 14.80, opts: ['otherNoodle'] },
+    { code: 'G08', zh: '啦啦米粉汤', en: 'Gan Jiong La La Mian', price: 16.80 },
+  ] },
+  { id: 'porridge', zh: '粥', en: 'Porridge', items: [
+    { code: 'P01', zh: '咸蛋白粥', en: 'Plain Porridge With Salted Egg', price: 5.80 },
+    { code: 'P02', zh: '肉碎白粥', en: 'Plain Porridge With Minced Pork', price: 8.80 },
+    { code: 'P04', zh: '金式咖喱鸡白粥', en: 'Plain Porridge With Curry Chicken', price: 10.80 },
+  ] },
+  { id: 'rice', zh: '饭类', en: 'Rice', items: [
+    { code: 'H01', zh: '鸡蛋椰浆饭', en: 'Nasi Lemak With Egg', price: 6.80 },
+    { code: 'H02', zh: '炸鸡椰浆饭', en: 'Nasi Lemak With Fried Chicken', price: 12.80, note: '15 mins' },
+    { code: 'H03', zh: '咖喱鸡椰浆饭', en: 'Nasi Lemak With Curry Chicken', price: 13.80 },
+    { code: 'H04', zh: '马来甜辣鸡椰浆饭', en: 'Nasi Lemak With Ayam Masak Merah', price: 14.80, note: '15 mins' },
+    { code: 'R01', zh: '潮州猪肉泡饭', en: 'Teow Chew Pork Soup Rice', price: 10.80 },
+    { code: 'R03', zh: '午餐肉荷包蛋饭', en: 'Luncheon Meat Rice With Fried Egg', price: 10.80 },
+    { code: 'R04', zh: '肉碎荷包蛋饭', en: 'Mince Pork Rice With Fried Egg', price: 10.80 },
+    { code: 'R05', zh: '咖喱鸡荷包蛋饭', en: 'Curry Chicken Rice With Fried Egg', price: 10.80 },
+  ] },
+  { id: 'snack', zh: '小吃', en: 'Snacks', items: [
+    { code: 'J01', zh: '猪肉爆炸丸', en: 'Pork Boom Ball', price: 7.80, note: '5pcs' },
+    { code: 'J02', zh: '福州爆炸鱼丸', en: 'Fish Boom Ball', price: 7.80, note: '5pcs' },
+    { code: 'J03', zh: '吊片猪肉丸', en: 'Squid & Pork Meat Ball', price: 5.80, note: '6pcs' },
+    { code: 'J04', zh: '西刀鱼丸', en: 'Fish Ball', price: 5.80, note: '6pcs' },
+    { code: 'J05', zh: '午餐肉', en: 'Luncheon Meat', price: 9.80, note: '5pcs' },
+    { code: 'J07', zh: '芝士豆腐', en: 'Cheese Fish Tofu', price: 6.80, note: '3pcs' },
+    { code: 'J08', zh: '金记炸云吞', en: 'Kim Kee Fried Wan Tun', price: 5.80, note: '6pcs' },
+    { code: 'J09', zh: '金记炸腐竹', en: 'Kim Kee Fried Bean Curd', price: 5.80, note: '3pcs' },
+    { code: 'J10', zh: '金记冬菇鸡脚', en: 'Kim Kee Chicken Feet Mushroom', price: 6.80, note: '3pcs' },
+    { code: 'J11', zh: '鱼饼', en: 'Fish Cake', price: 5.80 },
+    { code: 'J12', zh: '金记咖喱鸡', en: 'Kim Kee Curry Chicken', price: 6.80 },
+    { code: 'J13', zh: '鲜虾腐皮卷', en: 'Prawn Bean Curd Roll', price: 6.80, note: '3pcs' },
+    { code: 'J14', zh: '福建肉卷', en: 'Hokkien Lobak', price: 8.80 },
+    { code: 'J15', zh: '金钱肉干', en: 'Golden Coin BBQ Meat', price: 5.80, note: '6pcs' },
+  ] },
+  { id: 'bread', zh: '面包包点', en: 'Bread', items: [
+    { code: 'L01', zh: '温泉蛋', en: 'Onsen Half Boiled Egg', price: 4.20, note: '2pcs' },
+    { code: 'L02', zh: '加央牛油烧面包', en: 'Kaya Butter Toast', price: 3.80 },
+    { code: 'L03', zh: '牛油糖烧面包', en: 'Margarine Sugar Toast', price: 3.80, note: '15 mins' },
+    { code: 'L04', zh: '加央牛油蒸面包', en: 'Kaya Butter Steam Bread', price: 5.20, note: '15 mins' },
+    { code: 'L05', zh: '花生牛油面包', en: 'Peanut Butter Toast', price: 3.90 },
+    { code: 'L06', zh: '咖喱温泉蛋面包', en: 'Onsen Egg Toast With Curry Sauce', price: 3.90 },
+    { code: 'L07', zh: '豆沙包', en: 'Mini Red Bean Pau', price: 4.80, note: '2pcs' },
+    { code: 'L08', zh: '加央包', en: 'Mini Kaya Pau', price: 4.80, note: '2pcs' },
+    { code: 'L09', zh: '叉烧包', en: 'Mini Char Siew Pau', price: 4.80, note: '2pcs' },
+    { code: 'L10', zh: '花卷', en: 'Plain Flower Roll', price: 3.20, note: '2pcs' },
+    { code: 'L11', zh: '黄金流沙包', en: 'Golden Juicy Pau', price: 4.80, note: '3pcs' },
+  ] },
+  { id: 'kopi', zh: '大马风味', en: 'Kopi & Teh', items: [
+    { code: 'K01', zh: '奶茶', en: 'Teh', price: 4.00, opts: [variant('奶茶', 'Teh'), 'temp'] },
+    { code: 'K02', zh: '咖啡', en: 'Kopi', price: 4.00, opts: [variant('咖啡', 'Kopi'), 'temp'] },
+    { code: 'K03', zh: '茶啡', en: 'Cham', price: 4.00, opts: [variant('茶啡', 'Cham'), 'temp'] },
+    { code: 'K04', zh: '特调金式咖啡', en: 'Ice Kim Bing', price: 6.80, note: '冷 Cold' },
+    { code: 'K05', zh: '黄金咖啡', en: 'Golden Coffee', price: 7.80, note: '冷 Cold' },
+    { code: 'K06', zh: '美禄', en: 'Milo', price: 6.80, opts: ['temp'] },
+    { code: 'K07', zh: '美禄王', en: 'Milo King', price: 7.80, note: '冷 Cold' },
+    { code: 'K08', zh: '雀巢咖啡', en: 'Nescafe', price: 5.80, opts: ['temp'] },
+    { code: 'K09', zh: '白咖啡', en: 'White Coffee', price: 5.80, opts: ['temp'] },
+    { code: 'K10', zh: '三色奶茶', en: '3C Milk Tea', price: 5.80, note: '冷 Cold' },
+    { code: 'K11', zh: '三色咖啡', en: '3C Coffee', price: 5.80, note: '冷 Cold' },
+  ] },
+  { id: 'drink', zh: '饮料', en: 'Beverage', items: [
+    { code: 'K12', zh: '百香果', en: 'Passion Fruits', price: 5.80 },
+    { code: 'K13', zh: '夏日风情', en: 'Summer Cooler', price: 5.80 },
+    { code: 'K15', zh: '凉水薏米', en: 'Barley', price: 2.80, opts: ['temp'] },
+    { code: 'K16', zh: '柠檬薏米', en: 'Barley Lemon', price: 3.80, opts: ['temp'] },
+    { code: 'K17', zh: '凉粉', en: 'Cincao', price: 2.80 },
+    { code: 'K18', zh: '凉粉豆奶', en: 'Cincao Soya', price: 4.80 },
+    { code: 'K19', zh: '凉粉奶', en: 'Cincao Milk', price: 4.80 },
+    { code: 'K20', zh: '凉粉龙眼', en: 'Cincao Longan', price: 5.80 },
+    { code: 'K21', zh: '豆奶', en: 'Soya Bean', price: 3.80 },
+    { code: 'K22', zh: '龙眼', en: 'Longan', price: 4.80 },
+    { code: 'K23', zh: '龙眼奶', en: 'Longan Milk', price: 5.80 },
+    { code: 'K24', zh: '蜜糖', en: 'Honey', price: 4.80, opts: ['temp'] },
+    { code: 'K25', zh: '蜜糖柠檬', en: 'Honey Lemon', price: 5.80, opts: ['temp'] },
+    { code: 'K26', zh: '柠檬茶', en: 'Lemon Tea', price: 4.80, opts: ['temp'] },
+    { code: 'K27', zh: '咸柠7', en: 'Salted Lemon With 7up', price: 5.80 },
+    { code: 'K28', zh: '利宾纳', en: 'Ribena', price: 5.80 },
+    { code: 'K29', zh: '利宾纳柠檬', en: 'Ribena Lemon', price: 5.80 },
+    { code: 'K30', zh: '利宾纳龙眼', en: 'Ribena Longan', price: 5.80 },
+    { code: 'K31', zh: '鲜柠檬酸梅汁', en: 'Fresh Lemon Juice With Plum', price: 6.80 },
+    { code: 'K32', zh: '鲜沙梨酸梅汁', en: 'Fresh Ambarella Juice With Plum', price: 6.80 },
+    { code: 'K33', zh: '金玉满堂', en: 'Lemon Honey Jelly', price: 6.80 },
+  ] },
+  { id: 'dessert', zh: '甜品', en: 'Desserts', items: [
+    { code: 'S01', zh: '阿公姜汤汤圆', en: "Ah Gong's Ginger Soup With Tang Yuan", price: 4.80, note: '4pcs' },
+    { code: 'S02', zh: '阿嬷红豆水汤圆', en: "Ah Ma's Red Bean Soup With Tang Yuan", price: 6.80, note: '4pcs' },
+    { code: 'S03', zh: '阿嬷红豆水', en: "Ah Ma's Red Bean Soup", price: 4.80 },
+  ] },
+  { id: 'addon', zh: '添加', en: 'Add On', addon: true, items: [
+    { code: 'AD01', zh: '冬菇', en: 'Mushroom', price: 2.00 },
+    { code: 'AD02', zh: '木耳', en: 'Fungus', price: 2.00 },
+    { code: 'AD03', zh: '猪肉片', en: 'Pork Slice', price: 2.50 },
+    { code: 'AD04', zh: '树仔菜', en: 'Sayur Manis', price: 2.00 },
+    { code: 'AD05', zh: '江鱼仔', en: 'Anchovies', price: 2.50 },
+    { code: 'AD06', zh: '猪肉碎', en: 'Mince Pork', price: 2.50 },
+    { code: 'AD07', zh: '叉烧', en: 'Char Siew', price: 2.50 },
+    { code: 'AD08', zh: '猪油渣', en: 'Pork Lard', price: 2.50 },
+    { code: 'AD09', zh: '菜心', en: 'Sawi', price: 2.00 },
+    { code: 'AD10', zh: '温泉蛋', en: 'Onsen Egg', price: 2.50 },
+    { code: 'AD11', zh: '溏心蛋', en: 'Soft Boiled Egg', price: 3.00 },
+    { code: 'AD12', zh: '咖喱豆腐卜', en: 'Curry Tau Fu Bo', price: 2.00 },
+    { code: 'AD13', zh: '鱼饼', en: 'Fish Cake', price: 2.00 },
+    { code: 'AD14', zh: '全熟蛋', en: 'Full Boiled Egg', price: 2.00 },
+    { code: 'AD15', zh: '煎蛋', en: 'Fried Egg', price: 2.00 },
+    { code: 'AD16', zh: '全咸蛋', en: 'Full Salted Egg', price: 2.50 },
+    { code: 'AD17', zh: '啦啦', en: 'Lala', price: 8.80 },
+    { code: 'AD18', zh: '椰浆饭', en: 'Nasi Lemak Rice', price: 3.00 },
+    { code: 'AD19', zh: '白饭', en: 'White Rice', price: 2.00 },
+    { code: 'AD20', zh: '加面', en: 'Add Noodle', price: 2.00 },
+    { code: 'AD24', zh: '陈年花雕绍兴酒', en: 'Shao Xing Wine', price: 2.50, note: '1 pax' },
+  ] },
+];
+
+// Fixed quick notes for the kitchen, shown in the item sheet.
+const QUICK_NOTES = ['不要葱 No spring onion', '不要辣 No chili', '少辣 Less spicy', '多辣 Extra spicy',
+  '少冰 Less ice', '少甜 Less sugar', '分开装 Pack separately'];
