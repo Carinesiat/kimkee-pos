@@ -16,7 +16,47 @@ const TABLE_SIZES = {
 let floorEdit = false;
 let openByTable = {}; // table id -> open orders
 
-function defaultLayout(n) {
+// Real floor plans, measured from each outlet's drawing (one 1414 × 2000 px drawing per shop unit).
+// Each unit is placed side by side on the floor: ox = left edge in % of the floor width.
+// Rects are [name, x, y, w, h] in drawing pixels.
+const FLOOR_PLANS = {
+  bsd: [
+    { ox: 1, title: '店面 1 · Table 1–17', bar: [524, 1754, 365, 196], tables: [
+      ['14', 138, 168, 196, 196], ['15', 131, 555, 197, 196], ['16', 125, 970, 197, 196], ['17', 119, 1387, 197, 196],
+      ['7', 608, 99, 196, 183], ['8', 608, 282, 196, 196], ['9', 608, 536, 196, 196],
+      ['10', 608, 802, 196, 184], ['11', 608, 986, 196, 196], ['12', 608, 1259, 196, 184], ['13', 608, 1443, 196, 196],
+      ['1', 1074, 168, 196, 183], ['2', 1074, 351, 196, 196], ['3', 1072, 670, 196, 184], ['4', 1072, 854, 196, 195],
+      ['5', 1071, 1172, 196, 184], ['6', 1071, 1356, 196, 195],
+    ] },
+    { ox: 51, title: '店面 2 · Table 18–32', bar: [524, 1754, 365, 196], tables: [
+      ['28', 150, 100, 196, 196], ['29', 150, 296, 196, 196], ['30', 147, 758, 196, 194], ['31', 147, 952, 196, 197],
+      ['32', 150, 1315, 198, 364],
+      ['23', 608, 99, 196, 196], ['24', 608, 439, 196, 196], ['25', 608, 809, 196, 196], ['26', 608, 1148, 196, 196], ['27', 605, 1487, 197, 197],
+      ['18', 984, 99, 365, 198], ['19', 984, 437, 365, 198], ['20', 984, 798, 365, 198], ['21', 984, 1146, 365, 199], ['22', 984, 1463, 365, 199],
+    ] },
+  ],
+};
+
+// Drawing pixels -> % of the 4:3 floor. Each unit gets 48% of the width; 90.5% of the height keeps the drawing's shape.
+function layoutFromPlan(units) {
+  const sx = 48 / 1414, sy = 90.5 / 2000, oy = 6, gap = 6;
+  const els = [];
+  units.forEach((u, ui) => {
+    const box = ([x, y, w, h]) => ({ x: u.ox + (x + gap) * sx, y: oy + (y + gap) * sy, w: (w - 2 * gap) * sx, h: (h - 2 * gap) * sy });
+    els.push({ id: `l${ui}t`, type: 'label', name: u.title, x: u.ox, y: 0.5, w: 48, h: 5 });
+    for (const [name, ...r] of u.tables) els.push({ id: 't' + name, type: 'table', name, shape: 'rect', ...box(r) });
+    els.push({ id: `l${ui}b`, type: 'label', name: 'BAR', fill: true, ...box(u.bar) });
+  });
+  return els;
+}
+
+function defaultLayout(outletId) {
+  if (FLOOR_PLANS[outletId]) return layoutFromPlan(FLOOR_PLANS[outletId]);
+  const outlet = OUTLETS.find((o) => o.id === outletId);
+  return gridLayout(outlet ? outlet.tables : 20);
+}
+
+function gridLayout(n) {
   const cols = n > 24 ? 8 : 6;
   const rows = Math.ceil(n / cols);
   const cw = 100 / cols, ch = 100 / rows;
@@ -28,11 +68,7 @@ function defaultLayout(n) {
 }
 
 function getLayout() {
-  if (!settings.layout) {
-    const outlet = OUTLETS.find((o) => o.id === settings.outlet);
-    return defaultLayout(outlet ? outlet.tables : 20);
-  }
-  return settings.layout;
+  return settings.layout || defaultLayout(settings.outlet);
 }
 function saveLayout(layout) { settings.layout = layout; saveSettings(); }
 const tableById = (id) => getLayout().find((e) => e.id === id);
@@ -40,7 +76,8 @@ const tableById = (id) => getLayout().find((e) => e.id === id);
 // ---------- floor ----------
 async function renderTables() {
   if (!DB.db) return;
-  const open = await DB.byStatus('open');
+  let open;
+  try { open = await DB.byStatus('open'); } catch (e) { return; }
   openByTable = {};
   for (const o of open) if (o.table) (openByTable[o.table] ||= []).push(o);
   const counter = open.filter((o) => !o.table || !tableById(o.table)).sort((a, b) => a.createdAt - b.createdAt);
@@ -52,7 +89,7 @@ async function renderTables() {
   floor.classList.toggle('editing', floorEdit);
   floor.innerHTML = getLayout().map((e) => {
     const pos = `left:${e.x}%;top:${e.y}%;width:${e.w}%;height:${e.h}%`;
-    if (e.type === 'label') return `<div class="flabel" data-id="${e.id}" style="${pos}">${esc(e.name)}</div>`;
+    if (e.type === 'label') return `<div class="flabel ${e.fill ? 'filled' : ''}" data-id="${e.id}" style="${pos}">${esc(e.name)}</div>`;
     const orders = openByTable[e.id] || [];
     const busy = orders.length > 0;
     const since = busy ? Math.min(...orders.map((o) => o.createdAt)) : 0;
@@ -404,9 +441,8 @@ function wireTables() {
     else if (a === 'addTable') addElement('table');
     else if (a === 'addLabel') addElement('label');
     else if (a === 'resetLayout') {
-      confirmSheet('恢复默认排列？', '会把桌子排回整齐的格子，桌号从 1 开始 · Tables go back to a plain grid', '恢复 Reset', () => {
-        const outlet = OUTLETS.find((o) => o.id === settings.outlet);
-        saveLayout(defaultLayout(outlet ? outlet.tables : 20));
+      confirmSheet('恢复默认排列？', '桌子会回到总店设定的平面图 · Tables go back to the outlet\'s standard floor plan', '恢复 Reset', () => {
+        saveLayout(defaultLayout(settings.outlet));
         renderTables();
       }, true);
     }
