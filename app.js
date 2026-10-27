@@ -267,10 +267,10 @@ function confirmSheet(title, sub, okLabel, onOk, danger = false) {
 
 // Item sheet: choose options, qty and note. Used for adding and for editing a cart line.
 function openItemSheet(it, line) {
+  // sel[groupIndex] = picked choice indexes; groups with max > 1 allow several (stored joined with '+').
   const sel = it.groups.map((g) => {
-    if (!line) return -1;
-    const o = line.opts.find((x) => x.g === g.id);
-    return o ? g.choices.findIndex((c) => c.zh === o.zh) : -1;
+    const o = line && line.opts.find((x) => x.g === g.id);
+    return o ? o.zh.split('+').map((z) => g.choices.findIndex((c) => c.zh === z)).filter((ci) => ci >= 0) : [];
   });
   let qty = line ? line.qty : 1;
   let note = line ? line.note : '';
@@ -280,7 +280,7 @@ function openItemSheet(it, line) {
     <div class="sheet-head"><h3>${it.code ? esc(it.code) + ' · ' : ''}${esc(it.zh)}</h3><div class="sub">${esc(it.en)} · ${RM(line ? line.base : itemPrice(it))}</div></div>
     <div class="sheet-body">
       ${it.groups.map((g, gi) => `
-        <div class="group"><div class="group-title">${esc(g.zh)} <small>${esc(g.en)}</small><span class="req">必选 Required</span></div>
+        <div class="group"><div class="group-title">${esc(g.zh)} <small>${esc(g.en)}</small><span class="req">${g.max > 1 ? `必选，最多 ${g.max} 种 · Pick up to ${g.max}` : '必选 Required'}</span></div>
           <div class="chips">${g.choices.map((c, ci) => `<button class="chip" data-g="${gi}" data-c="${ci}">${esc(c.zh)}${c.price ? `<span class="delta">+${fmt(toSen(c.price))}</span>` : ''}<small>${esc(c.en)}</small></button>`).join('')}</div>
         </div>`).join('')}
       <div class="group"><div class="group-title">堂食 / 外带 <small>Dine-in / Takeaway</small></div>
@@ -301,11 +301,11 @@ function openItemSheet(it, line) {
 
   const ok = $('[data-ok]', s);
   const sync = () => {
-    $$('.chip[data-g]', s).forEach((b) => b.classList.toggle('on', sel[+b.dataset.g] === +b.dataset.c));
+    $$('.chip[data-g]', s).forEach((b) => b.classList.toggle('on', sel[+b.dataset.g].includes(+b.dataset.c)));
     $$('.chip[data-p]', s).forEach((b) => b.classList.toggle('on', b.dataset.p === pack));
     const base = line ? line.base : itemPrice(it);
-    const delta = sel.reduce((a, ci, gi) => a + (ci >= 0 ? toSen(it.groups[gi].choices[ci].price || 0) : 0), 0);
-    const ready = sel.every((ci) => ci >= 0);
+    const delta = sel.reduce((a, cis, gi) => a + cis.reduce((d, ci) => d + toSen(it.groups[gi].choices[ci].price || 0), 0), 0);
+    const ready = sel.every((cis) => cis.length > 0);
     ok.disabled = !ready;
     ok.innerHTML = `${line ? '保存 Save' : '加入 Add'}<small>${RM((base + delta + packFee(pack)) * qty)}</small>`;
     $('#qtyVal', s).textContent = qty;
@@ -315,7 +315,14 @@ function openItemSheet(it, line) {
   s.onclick = (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.g !== undefined) { sel[+b.dataset.g] = +b.dataset.c; sync(); }
+    if (b.dataset.g !== undefined) {
+      const gi = +b.dataset.g, ci = +b.dataset.c, max = it.groups[gi].max || 1, cur = sel[gi];
+      if (max === 1) sel[gi] = [ci];
+      else if (cur.includes(ci)) cur.splice(cur.indexOf(ci), 1);
+      else if (cur.length < max) cur.push(ci);
+      else toast(`最多选 ${max} 种 · Max ${max}`);
+      sync();
+    }
     else if (b.dataset.p) { pack = b.dataset.p; sync(); }
     else if (b.dataset.q) { qty = Math.max(1, qty + +b.dataset.q); sync(); }
     else if (b.dataset.qn) {
@@ -330,9 +337,10 @@ function openItemSheet(it, line) {
       cart.lines = cart.lines.filter((l) => l !== line);
       saveCart(); renderCart(); closeModal();
     } else if (b === ok && !ok.disabled) {
-      const opts = sel.map((ci, gi) => {
-        const g = it.groups[gi], c = g.choices[ci];
-        return { g: g.id, zh: c.zh, en: c.en, delta: toSen(c.price || 0) };
+      const opts = sel.map((cis, gi) => {
+        const g = it.groups[gi];
+        const cs = [...cis].sort((a, b) => a - b).map((ci) => g.choices[ci]);
+        return { g: g.id, zh: cs.map((c) => c.zh).join('+'), en: cs.map((c) => c.en).join(' + '), delta: cs.reduce((a, c) => a + toSen(c.price || 0), 0) };
       });
       note = $('#noteInput', s).value.trim();
       if (line) {

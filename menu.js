@@ -6,7 +6,8 @@ const OPTION_GROUPS = {
   panMee: { zh: '面类', en: 'Noodle', choices: [
     { zh: '手捏', en: 'Pinched' }, { zh: '粗', en: 'Thick' }, { zh: '幼', en: 'Thin' },
   ] },
-  otherNoodle: { zh: '面类', en: 'Noodle', choices: [
+  // max: how many choices may be picked together (default 1).
+  otherNoodle: { zh: '面类', en: 'Noodle', max: 2, choices: [
     { zh: '老鼠粉', en: 'Lao Shu Fen' }, { zh: '云吞面', en: 'Egg Noodle' }, { zh: '米粉', en: 'Mi Hun' },
     { zh: '面', en: 'Mee' }, { zh: '河粉', en: 'Hor Fun' },
   ] },
@@ -24,9 +25,6 @@ const OPTION_GROUPS = {
     { zh: '咖啡', en: 'Kopi' }, { zh: '奶茶', en: 'Teh' }, { zh: '茶啡', en: 'Cham' },
     { zh: '雀巢咖啡', en: 'Nescafé', price: 2 }, { zh: '美禄', en: 'Milo', price: 2 },
     { zh: '白咖啡', en: 'White Coffee', price: 2 },
-  ] },
-  kidSide: { zh: '配菜', en: 'Side', choices: [
-    { zh: '芝士豆腐', en: 'Cheese Tofu' }, { zh: '脆口豆腐鱼丸', en: 'Crispy Fish Tofu' },
   ] },
   kidMilk: { zh: '鲜奶', en: 'Fresh Milk', choices: [
     { zh: '原味', en: 'Original' }, { zh: '巧克力', en: 'Chocolate' },
@@ -69,9 +67,9 @@ const CATEGORIES = [
     { id: 'BFX3', code: '', zh: '早餐加 炸鸡翅', en: 'Add Fried Chicken Wings', price: 4.80, addon: true },
   ] },
   { id: 'kid', zh: '儿童套餐', en: 'Kid Sets', note: '含鲜奶 + 玩具 Milk + Toy included', items: [
-    { code: 'K1', zh: '干捞肉碎板面', en: 'Dry Pan Mee With Minced Pork', price: 14.80, opts: ['kidSide', 'kidMilk'] },
-    { code: 'K2', zh: '肉碎干捞云吞面', en: 'Dry Egg Noodle With Minced Pork', price: 14.80, opts: ['kidSide', 'kidMilk'] },
-    { code: 'K3', zh: '特制肉碎饭', en: 'White Rice With Minced Pork', price: 14.80, opts: ['kidSide', 'kidMilk'] },
+    { code: 'K1', zh: '干捞肉碎板面', en: 'Dry Pan Mee With Minced Pork', price: 14.80, opts: ['kidMilk'] },
+    { code: 'K2', zh: '肉碎干捞云吞面', en: 'Dry Egg Noodle With Minced Pork', price: 14.80, opts: ['kidMilk'] },
+    { code: 'K3', zh: '特制肉碎饭', en: 'White Rice With Minced Pork', price: 14.80, opts: ['kidMilk'] },
     { code: 'K4', zh: '午餐肉饭', en: 'Luncheon Meat Rice', price: 14.80, opts: ['kidMilk'] },
     { code: 'K5', zh: '清汤肉碎板面', en: 'Pan Mee Soup With Minced Pork', price: 14.80, opts: ['kidMilk'] },
     { code: 'K6', zh: '清汤鱼饼米粉面', en: 'Meehoon Mee Soup With Fish Cake', price: 14.80, opts: ['kidMilk'] },
@@ -84,10 +82,10 @@ const CATEGORIES = [
     { code: '04D', zh: '瓦煲麻辣干捞板面', en: 'Claypot Spicy Dry Pan Mee', price: 12.80, opts: ['panMee'] },
     { code: '05', zh: '瓦煲卤板面', en: 'Claypot Stewed Pan Mee', price: 11.80, opts: ['panMee'] },
     { code: '06', zh: '虾米辣椒板面', en: 'Dry Chili Pan Mee', price: 12.80, opts: ['panMee'] },
-    { code: '07', zh: '韩式泡菜板面', en: 'Kim Chi Pan Mee', price: 15.80, opts: ['panMee'] },
     { code: '08', zh: '瓦煲金式东炎板面', en: "Claypot Kim's Tomyum Pan Mee", price: 11.80, opts: ['panMee'] },
     { code: '09', zh: '瓦煲番茄板面', en: 'Claypot Tomato Pan Mee', price: 13.80, opts: ['panMee'] },
-    { code: '10', zh: '瓦煲咸蛋板面', en: 'Claypot Salted Egg Pan Mee', price: 15.80, opts: ['panMee'] },
+    { code: '10', zh: '瓦煲咸蛋板面', en: 'Claypot Salted Egg Pan Mee', price: 15.80, opts: [
+      { zh: '面类', en: 'Noodle', choices: [{ zh: '粗', en: 'Thick' }, { zh: '幼', en: 'Thin' }] }] },
   ] },
   { id: 'yeemee', zh: '伊面', en: 'Yee Mee', items: [
     { code: 'D01', zh: '瓦煲清汤伊面', en: 'Claypot Yee Mee Soup', price: 10.80 },
@@ -111,8 +109,6 @@ const CATEGORIES = [
     { code: 'F03', zh: '干咖喱鸡云吞面', en: 'Dry Egg Noodle With Curry Chicken', price: 10.80 },
     { code: 'F04', zh: '冬菇鸡脚云吞面', en: 'Dry Egg Noodle With Chicken Feet', price: 10.80 },
     { code: 'F05', zh: '福州面线', en: 'Mee Suah Soup With Fu Zhou Ball', price: 10.80 },
-    { code: 'F06', zh: '肉碎溏心蛋云吞面', en: 'Mince Pork Egg Noodle With Soft Boiled Egg', price: 11.80 },
-    { code: 'F07', zh: '餐蛋面', en: 'Cān Dàn Miàn', price: 15.80 },
     { code: 'G01', zh: '鱼丸粉', en: 'Fish Ball Noodle', price: 10.80, opts: ['otherNoodle'] },
     { code: 'G02', zh: '猪肉粉', en: 'Pork Noodle', price: 10.80, opts: ['otherNoodle'] },
     { code: 'G03', zh: '咖喱面', en: 'Curry Mee', price: 14.80, opts: ['otherNoodle'] },
@@ -141,7 +137,6 @@ const CATEGORIES = [
     { code: 'J03', zh: '吊片猪肉丸', en: 'Squid & Pork Meat Ball', price: 5.80, note: '6pcs' },
     { code: 'J04', zh: '西刀鱼丸', en: 'Fish Ball', price: 5.80, note: '6pcs' },
     { code: 'J05', zh: '午餐肉', en: 'Luncheon Meat', price: 9.80, note: '5pcs' },
-    { code: 'J07', zh: '芝士豆腐', en: 'Cheese Fish Tofu', price: 6.80, note: '3pcs' },
     { code: 'J08', zh: '金记炸云吞', en: 'Kim Kee Fried Wan Tun', price: 5.80, note: '6pcs' },
     { code: 'J09', zh: '金记炸腐竹', en: 'Kim Kee Fried Bean Curd', price: 5.80, note: '3pcs' },
     { code: 'J10', zh: '金记冬菇鸡脚', en: 'Kim Kee Chicken Feet Mushroom', price: 6.80, note: '3pcs' },
