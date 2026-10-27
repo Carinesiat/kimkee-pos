@@ -34,6 +34,14 @@ python3 -m http.server 8765
 
 Then open http://localhost:8765.
 
+## Links
+
+- POS: https://carinesiat.github.io/kimkee-pos/
+- Owner dashboard: https://carinesiat.github.io/kimkee-pos/dashboard.html
+
 ## Install on the iPad
 
-The app has to be opened once from an `https://` address (e.g. GitHub Pages or Netlify). Then in Safari tap Share → Add to Home Screen. After that it opens from the home screen and works without internet.
+1. Open the POS link in Safari, tap Share → Add to Home Screen. After that it opens from the home screen and works without internet.
+2. In 设置 Settings → 分店 Outlet, pick the outlet, enter its device key (kept in `outlet-keys.txt`, not in git) and tap 连接 Connect.
+
+Pushing to `main` updates GitHub Pages; iPads pick up the new version the next time they open the app online (bump `CACHE` in `sw.js` when files change).
